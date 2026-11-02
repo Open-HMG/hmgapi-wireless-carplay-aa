@@ -304,6 +304,8 @@ final class CpTurns {
             default: unit = Cluster.UNIT_M; break;
         }
         int icon = icon(x.type, x.side, x.junction, x.exit, u.state);
+        // StartRoute has no direction: clear the previous app's HUD arrow.
+        if (x.type == 11 && icon == 1) hudBlank();
         cluster.crossroadName(x.afterRoad);
         if (icon == 0) return;
         cluster.tbtInfo(icon, 0, 0f, dist, 0, 0, unit, 0, 0);
@@ -320,9 +322,11 @@ final class CpTurns {
      */
     static int icon(int type, int side, int junction, int exit, int state) {
         switch (type) {
+            // Ordinary left/right types carry the direction even when the optional
+            // exit angle is absent (the parser resets it to zero on every update).
             case 1:   // left turn
                 if (junction == 0 && exit == -120) return 69;
-                if (side == 0 && junction == 0 && exit == -90) return 70;
+                if ((side == 0 || side == 1) && junction == 0 && (exit == -90 || exit == 0)) return 70;
                 if (junction == 0 && exit == -60) return 71;
                 if (junction == 0 && exit == -45) return 145;
                 if (side == 1 && junction == 1 && exit == -120) return 104;
@@ -331,7 +335,7 @@ final class CpTurns {
                 return 0;
             case 2:   // right turn
                 if (junction == 0 && exit == 60) return 66;
-                if (side == 0 && junction == 0 && exit == 90) return 67;
+                if ((side == 0 || side == 1) && junction == 0 && (exit == 90 || exit == 0)) return 67;
                 if (junction == 0 && exit == 120) return 68;
                 if (side == 0 && junction == 1 && exit == 0) return 96;
                 if (side == 1 && junction == 1 && exit == 0) return 97;
@@ -341,7 +345,7 @@ final class CpTurns {
                 if (side == 0 && junction == 0 && exit == 45) return 144;
                 return 0;
             case 3:   // straight
-                return side == 0 && junction == 0 && exit == 0 ? 65 : 0;
+                return (side == 0 || side == 1) && junction == 0 && exit == 0 ? 65 : 0;
             case 4:   // U-turn
                 if (side == 0 && junction == 0) return 72;
                 if (side == 1 && junction == 0) return 73;
@@ -353,6 +357,8 @@ final class CpTurns {
                 int i = side == 0 && junction == 0 ? 112 : 0;
                 return state == 2 ? 3 : i;
             }
+            case 11:  // departure: NO_INFO, not a turn inferred from missing geometry
+                return (side == 0 || side == 1) && junction == 0 && exit == 0 ? 1 : 0;
             case 15: return side == 0 && junction == 0 && exit == 0 ? 176 : 0;
             case 19: return side == 0 && junction == 1 && exit == -180 ? 102 : 0;
             case 22: return side == 0 && junction == 0 && exit == 0 ? 82 : 0;

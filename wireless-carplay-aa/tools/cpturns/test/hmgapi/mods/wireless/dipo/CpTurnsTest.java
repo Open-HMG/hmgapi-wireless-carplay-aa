@@ -71,6 +71,45 @@ public final class CpTurnsTest {
                 8, ENUM, i(side), 9, ENUM, i(junction), 11, U8, i(exit));
     }
 
+    /** Public, synthetic fixtures for the ordinary turns observed on India 260430.
+     * No car dumps or private route strings are needed for this regression. */
+    static void indiaTurns() {
+        check("India Apple Maps left/right and straight", CpTurns.icon(1, 1, 0, -90, 1) == 70
+                && CpTurns.icon(2, 1, 0, 90, 1) == 67 && CpTurns.icon(3, 1, 0, 0, 1) == 65);
+        for (int side = 0; side <= 1; side++) {
+            check("explicit ordinary turns without optional angle, side " + side,
+                    CpTurns.icon(1, side, 0, 0, 1) == 70 && CpTurns.icon(2, side, 0, 0, 1) == 67);
+            check("departure is NO_INFO, not a straight arrow, side " + side,
+                    CpTurns.icon(11, side, 0, 0, 1) == 1);
+        }
+        check("invalid traffic sides do not gain ordinary turn/departure fallbacks",
+                CpTurns.icon(1, 2, 0, 0, 1) == 0 && CpTurns.icon(2, -1, 0, 0, 1) == 0
+                        && CpTurns.icon(3, 2, 0, 0, 1) == 0 && CpTurns.icon(11, 2, 0, 0, 1) == 0);
+        check("unrecognized angles and junctions stay unsupported",
+                CpTurns.icon(1, 1, 0, -91, 1) == 0 && CpTurns.icon(2, 1, 0, 91, 1) == 0
+                        && CpTurns.icon(11, 1, 0, 90, 1) == 0 && CpTurns.icon(11, 1, 1, 0, 1) == 0);
+        c = new Cluster();
+        CpTurns t = new CpTurns(new android.content.Context(), c, null);
+        t.maneuver(maneuver(0, 2, 1, 0, 90, "Test Road", 100));
+        t.routeGuidance(msg(0, U16, i(1), 1, ENUM, i(1), 11, STR, s("100"),
+                12, ENUM, i(2), 13, U16, i(0)));
+        expect("India Apple right turn reaches cluster and HUD",
+                "road [Test Road]", "tbt 67 0 0.0 100.0 0 0 0 0 0",
+                "hud f201430000" + utf16("Test Road"), "2c 0 0 100 0 0 0 0 0 0");
+        t.maneuver(msg(0, U16, i(1), 1, U16, i(0), 3, ENUM, i(11)));
+        t.routeGuidance(msg(0, U16, i(1)));
+        expect("Google departure clears prior HUD turn and sends non-directional NO_INFO",
+                "2c 0 0 0 0 0 0 0 0 0", "lanes f1", "hud f2", "hud f2",
+                "road [Test Road]", "tbt 1 0 0.0 100.0 0 0 0 0 0", "2c 0 0 100 0 0 0 0 0 0");
+        t.maneuver(msg(0, U16, i(1), 1, U16, i(0), 3, ENUM, i(2)));
+        t.routeGuidance(msg(0, U16, i(1)));
+        expect("Google right without angle reaches cluster and HUD after departure",
+                "road [Test Road]", "tbt 67 0 0.0 100.0 0 0 0 0 0",
+                "hud f201430000" + utf16("Test Road"), "2c 0 0 100 0 0 0 0 0 0");
+        t.routeGuidance(msg(0, U16, i(1), 1, ENUM, i(0)));
+        expect("India route stop still clears HUD", "2c 0 0 0 0 0 0 0 0 0", "lanes f1", "hud f2", "hud f2");
+    }
+
     public static void main(String[] a) throws Exception {
         java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone("UTC"));
         Car.unit = Car.DISTANCE_MILES;
@@ -121,7 +160,9 @@ public final class CpTurnsTest {
 
         t.maneuver(msg(0, U16, i(1), 1, U16, i(0), 5, U32, i(250)));
         t.routeGuidance(msg(0, U16, i(1), 11, STR, s("0.1"), 12, ENUM, i(MILES)));
-        expect("maneuver update without its exit angle: DiPO resets the angle, so no turn icon (crossroad only)", "road [Main St]");
+        expect("maneuver update without optional angle retains its explicit right-turn direction",
+                "road [Main St]", "tbt 67 0 0.0 0.1 0 0 2 0 0", "2c 2 1 0 0 0 0 0 0 0", "sub 0.4 0 2 22 13 1 1 0.0 -1 0",
+                "list {1 70 0 [Oak Ave] [] " + (800 / 1609f) + " 2} {2 72 0 [Pine St] [] " + (2000 / 1609f) + " 2}");
         t.maneuver(maneuver(0, RIGHT, 0, 0, 90, "Main St", 250));
 
         t.routeGuidance(msg(0, U16, i(1), 7, U32, i(100), 6, U64, l(0), 5, U64, l(0)));
@@ -193,6 +234,7 @@ public final class CpTurnsTest {
         check("lane angles: 0 straight, 90 right, -45 slight left, 180 back",
                 CpTurns.laneIcon(0) == 1 && CpTurns.laneIcon(90) == 3 && CpTurns.laneIcon(-45) == 8 && CpTurns.laneIcon(180) == 5
                         && CpTurns.laneIcon(270) == 7);
+        indiaTurns();
         System.exit(fail);
     }
 }
