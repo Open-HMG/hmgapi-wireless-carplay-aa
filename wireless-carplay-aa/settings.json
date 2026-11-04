@@ -9,6 +9,14 @@
       "apply": "rebuild"
     },
     {
+      "key": "tbt_standard",
+      "type": "toggle",
+      "default": false,
+      "title": "Android Auto turns in the car's own format (AR HUD arrow, distance bar)",
+      "apply": "restart",
+      "description": "Near each maneuver (about 1,500 ft), Android Auto's turns go to the cluster and HUD as the car's own navigation sends them: turn, U-turn, fork, exit and roundabout types with their angle and the distance bar counting down, which the AR HUD animates; destinations as left, right or ahead. Off: the projection icons, as before. Checked on a US Ioniq 5 with the AR HUD. Takes effect when the head unit restarts."
+    },
+    {
       "key": "bridge",
       "type": "toggle",
       "default": true,

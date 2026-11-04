@@ -39,6 +39,13 @@ final class AaTurns {
     static final int EV_DEST_NAME = 32, EV_DUMP = 33, EV_LANES = 34, EV_AHEAD = 64, EV_AHEAD_END = 67;
     static final int FLAG_TRIP = 0x100, FLAG_AHEAD = 0x200, FLAG_POINT = 0x800;
     static final byte HUD_LIST = (byte) 0xF2, LANES = (byte) 0xF1;
+    /** the car navigation's main-display types (Navigation.DisplayType) */
+    static final int TYPE_TURN = 13, TYPE_EXIT_RIGHT = 17, TYPE_EXIT_LEFT = 18, TYPE_FORK = 25, TYPE_U_TURN = 31,
+            TYPE_ROUNDABOUT_RIGHT = 32, TYPE_ROUNDABOUT_LEFT = 33;
+    /** its destination icons: ahead, on the right, on the left */
+    static final int DEST_AHEAD = 112, DEST_RIGHT = 113, DEST_LEFT = 114;
+    /** how far before a maneuver the car's navigation switches to its turn format and starts the bar (m) */
+    static final int GUIDE_WINDOW = 457;
 
     final Context context;
     final Cluster cluster;
@@ -54,7 +61,17 @@ final class AaTurns {
     int event, turnSide, turnAngle, turnNumber, displayType, direction, unit;
     String road;
     float distance;
+    int meters = -1;
     boolean navLive;
+    /**
+     * Setting tbt_standard (off by default): the next maneuver as the car's own navigation sends it
+     * (standard(), from its cluster code: libExSLNavi, Navi::CLUSTER::Turn::CInformation,
+     * US Ioniq 5 260507). Within GUIDE_WINDOW of a maneuver: its type (TURN, U_TURN,
+     * FORK_2, EXIT_*, roundabout) with the maneuver's angle and the distance bar counting
+     * down; farther away, the projection icon with the bar off; destinations as its
+     * destination icons. The HUD's turn list keeps the projection icons, as the car's does.
+     */
+    boolean standardTurns;
     // destination and the remaining trip
     String destName;
     int estPoint;
@@ -211,6 +228,7 @@ final class AaTurns {
         turnAngle = 0;
         turnNumber = 0;
         unit = 0;
+        meters = -1;
         displayType = 0;
         direction = 0;
     }
@@ -225,19 +243,79 @@ final class AaTurns {
 
     void sendTurn() {
         if (!navLive) return;
-        int bar = 32, barErr = 0;
+        int type = displayType, dir = direction, bar = 32, barErr = 0, sides = 65535;
         if (distance < 0f) {
             bar = 254;
             barErr = -2;
-            if (displayType < 64) displayType = 2;
+            if (displayType < 64) displayType = type = 2;
+        } else if (standardTurns) {
+            int[] s = standard(event, turnSide, displayType, direction, meters);
+            type = s[0];
+            dir = s[1];
+            bar = s[2];
+            // the car's own types draw the intersection from the side-street bits (one per
+            // 22.5 degrees): 65535 is a road every way. The car's navigation sends 0 (the
+            // phone has no intersection shape either); the icons keep 65535
+            if (type < 64) sides = 0;
         }
-        cluster.tbtInfo(displayType, 65535, direction, distance, 0, 0, unit, bar, barErr);
+        cluster.tbtInfo(type, sides, dir, distance, 0, 0, unit, bar, barErr);
         sendHudList();
         sendHudDistance();
     }
 
+    /**
+     * {type, direction, bar} for the main display, as the car's navigation sends them: its
+     * cluster code (Navi::CLUSTER::Turn::CInformation) picks a type per maneuver near it
+     * (SetCaseTurnPoint, SetCaseRotary, SetCaseExpExit, SetCaseDestWayPoint), the angle
+     * in 45 degree steps (convertRGIconIDToClusterAngle) and the bar from the progress to
+     * the maneuver: (100 - progress%) / 10, at least 1. The progress runs over about 457 m
+     * (two drives: 0.3 mi 9, 900 ft 6, 300 ft 2, 30 ft 1). Farther away it keeps the icon
+     * (RGIconIDToClusterDispType, the same codes as ours) with the bar off.
+     * icon: our projection type for this maneuver; iconDir: its direction.
+     */
+    static int[] standard(int ev, int side, int icon, int iconDir, int m) {
+        if (ev == DESTINATION) {
+            if (m >= 0 && m < 20) return new int[] { 3, 0, 0 };   // ARRIVED
+            int d = side == RIGHT ? DEST_RIGHT : side == LEFT ? DEST_LEFT : DEST_AHEAD;
+            return new int[] { d, 0, 0 };
+        }
+        if (m < 0 || m > GUIDE_WINDOW) return new int[] { icon, iconDir, 0 };
+        int bar = Math.max(1, Math.min(9, m * 10 / GUIDE_WINDOW)) * 10;
+        boolean r = side == RIGHT, l = side == LEFT;
+        switch (ev) {
+            case STRAIGHT: case MERGE:
+                return new int[] { TYPE_TURN, 0, bar };
+            case NAME_CHANGE:
+                return r || l ? new int[] { TYPE_TURN, r ? 90 : 270, bar } : new int[] { TYPE_TURN, 0, bar };
+            case SLIGHT_TURN:
+                if (r || l) return new int[] { TYPE_TURN, r ? 45 : 315, bar };
+                break;
+            case TURN:
+                if (r || l) return new int[] { TYPE_TURN, r ? 90 : 270, bar };
+                break;
+            case SHARP_TURN:
+                if (r || l) return new int[] { TYPE_TURN, r ? 135 : 225, bar };
+                break;
+            case U_TURN:
+                return new int[] { TYPE_U_TURN, r ? 90 : 270, bar };
+            case FORK:
+                if (r || l) return new int[] { TYPE_FORK, r ? 90 : 270, bar };
+                break;
+            case OFF_RAMP:
+                if (r || l) return new int[] { r ? TYPE_EXIT_RIGHT : TYPE_EXIT_LEFT, r ? 90 : 270, bar };
+                break;
+            case ROUNDABOUT_EXIT: case ROUNDABOUT_ENTER_AND_EXIT:
+                // the exit's direction; 32 for right-hand traffic, 33 left (the car: its drive side)
+                return new int[] { l ? TYPE_ROUNDABOUT_LEFT : TYPE_ROUNDABOUT_RIGHT, iconDir, bar };
+            default:
+                break;
+        }
+        return new int[] { icon, iconDir, bar };   // on-ramps, ferries, no side: the icon, with the bar
+    }
+
     /** Distance to the next turn, in the owner's unit (Settings) where the phone's differs. */
     void setDistance(int meters, int e3, int u) {
+        this.meters = meters;
         int usm = Car.distanceUnit(context);
         if (meters >= 0) {
             if (usm == Car.DISTANCE_KM) {
