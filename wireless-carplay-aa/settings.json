@@ -23,6 +23,22 @@
       "apply": "rebuild"
     },
     {
+      "key": "picture",
+      "type": "toggle",
+      "default": true,
+      "title": "CarPlay picture recovers from a freeze",
+      "apply": "restart",
+      "description": "A hook in the CarPlay app (no files changed). When the video decoder reports a failure or the screen stream times out, asks the phone for a new full frame, as leaving CarPlay and coming back does, without the flicker."
+    },
+    {
+      "key": "picture_periodic",
+      "type": "toggle",
+      "default": true,
+      "title": "On wireless CarPlay, also ask for a full frame every 10 seconds",
+      "apply": "restart",
+      "description": "For a picture that freezes without the decoder reporting it. Caps a freeze at about 10 seconds, for one extra full frame each time."
+    },
+    {
       "key": "menu",
       "type": "toggle",
       "default": true,

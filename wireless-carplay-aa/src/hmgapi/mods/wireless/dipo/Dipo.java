@@ -43,6 +43,9 @@ import hmgapi.hook.Points;
  * for it: its own wireless CarPlay off (that's Hyundai's, not this one), its iAP2
  * listener ignoring the bridge's sessions, the reconnect crash fix and the first-connect
  * notice fix.
+ *
+ * Picture ("picture"): asks the phone for a new key frame when the CarPlay picture
+ * stalls, which the stock app never does (Keyframes has the why and the when).
  */
 public final class Dipo {
     private Dipo() {}
@@ -87,6 +90,7 @@ public final class Dipo {
             m.nativePatch(a, "libCarPlayAudio.so");   // offer AAC and Opus on Wi-Fi
             m.nativePatch(a, "libCarPlayUtils.so");   // its AudioConverter calls go to libleafiaaac.so
         }
+        if (m.settingBoolean("picture", true)) picture(m.settingBoolean("picture_periodic", true));
         if (tbt) turnByTurn();
         if (bridge) bridge();
         if (!tbt && !bridge) return;
@@ -214,6 +218,114 @@ public final class Dipo {
                     else turns.lanes(msg);
                 }
             });
+        }
+    }
+
+    static Handler pictureHandler;
+    static Keyframes keyframes;
+    /** DiPO's CarPlayService, from the last callback */
+    static volatile Object cpService;
+
+    /**
+     * Picture ("picture"): asks the phone for a new key frame when the CarPlay picture
+     * stalls (Keyframes says when). forceKeyFrame() runs on the part's own thread, never
+     * on the callback's.
+     */
+    private static void picture(boolean periodic) {
+        final ClassLoader cl = app.classLoader;
+        if (!Points.has("dipo.carplay.force_key_frame")) {
+            log("CarPlay picture: no forceKeyFrame on this car, off");
+            return;
+        }
+        HandlerThread t = new HandlerThread("hmgapi-cp-picture");
+        t.start();
+        pictureHandler = new Handler(t.getLooper());
+        keyframes = new Keyframes(periodic);
+        mod.hook(cl, "dipo.carplay.session_started", new MethodHook() {
+            @Override
+            protected void afterHookedMethod(final Param p) {
+                final Object cp = p.thisObject;
+                final int transport = (Integer) p.args[0];
+                pictureHandler.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        cpService = cp;
+                        keyframes.sessionStarted(transport);
+                        pictureHandler.removeCallbacks(TICK);
+                        if (keyframes.ticking()) pictureHandler.postDelayed(TICK, Keyframes.PERIOD_MS);
+                    }
+                });
+            }
+        });
+        mod.hook(cl, "dipo.carplay.session_finalized", new MethodHook() {
+            @Override
+            protected void afterHookedMethod(Param p) {
+                pictureHandler.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        keyframes.sessionEnded();
+                        pictureHandler.removeCallbacks(TICK);
+                    }
+                });
+            }
+        });
+        mod.hook(cl, "dipo.carplay.decode_failure", new MethodHook() {
+            @Override
+            protected void afterHookedMethod(final Param p) {
+                final Object cp = p.thisObject;
+                final int type = (Integer) p.args[0];
+                pictureHandler.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        cpService = cp;
+                        int before = keyframes.failures;
+                        if (keyframes.decodeFailure(type, now())) forceKeyFrame("decoder failure type " + type + " (" + (before + 1) + " since the last key frame)");
+                    }
+                });
+            }
+        });
+        mod.hook(cl, "dipo.carplay.screen_timeout", new MethodHook() {
+            @Override
+            protected void afterHookedMethod(final Param p) {
+                final Object cp = p.thisObject;
+                pictureHandler.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        cpService = cp;
+                        if (keyframes.screenTimeout(now())) forceKeyFrame("screen timeout");
+                    }
+                });
+            }
+        });
+        log("CarPlay picture: key frame on a stall" + (periodic ? ", and every " + Keyframes.PERIOD_MS / 1000 + " s on wireless" : ""));
+    }
+
+    static final Runnable TICK = new Runnable() {
+        @Override
+        public void run() {
+            if (!keyframes.ticking()) return;
+            long now = now();
+            if (keyframes.tick(now)) forceKeyFrame(null);
+            pictureHandler.postDelayed(this, keyframes.nextTick(now));
+        }
+    };
+
+    static long now() {
+        return android.os.SystemClock.uptimeMillis();
+    }
+
+    /** on the picture thread; why null for the periodic one (not logged, it's every 10 s) */
+    static void forceKeyFrame(String why) {
+        Object cp = cpService;
+        if (cp == null) return;
+        int failures = keyframes.failures;
+        keyframes.failures = 0;
+        try {
+            Object r = Points.call(app.classLoader, "dipo.carplay.force_key_frame", cp);
+            if (why != null) log("CarPlay picture: key frame asked for after " + why + ": " + r);
+            else if (failures > 0) log("CarPlay picture: periodic key frame, " + failures + " decoder failure(s) since the last: " + r);
+        } catch (Throwable t) {
+            error("CarPlay picture: forceKeyFrame failed", t);
         }
     }
 
