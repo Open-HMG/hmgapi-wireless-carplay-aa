@@ -47,6 +47,8 @@ final class CpTurns {
     /** last HUD list sent (type, next, road), so an unchanged one isn't resent */
     int hudType, hudNext;
     String hudRoad;
+    /** the main turn on the cluster: component, maneuver index, its type and icon (shownIcon 0: nothing of ours shown) */
+    int shownId, shownIndex, shownType, shownIcon;
 
     CpTurns(Context context, Cluster cluster, Runnable restart) {
         this.context = context;
@@ -233,12 +235,27 @@ final class CpTurns {
     /** the iAP2 session ended (DiPO e/u.disconnected) */
     void disconnected() {
         reset();
-        hudBlank();
+        release();
         source = null;
     }
 
     /** route guidance stopped (DiPO e/u.nS: the car's navigation took turn-by-turn back, or state 0) */
     void stop() {
+        release();
+    }
+
+    /**
+     * The HUD, and the cluster's main turn and trip if one of ours is up (as the Android
+     * Auto turns' release): stock only blanked the HUD, so the last arrow and distance
+     * stayed on the cluster after guidance ended. Only ours, so the car's own
+     * navigation's turn is never cleared.
+     */
+    void release() {
+        if (shownIcon != 0) {
+            cluster.tbtInfo(0, 0, 0f, 0f, -1, 0, 0, 0, -1);
+            cluster.tbtSubInfo(0f, -1, 0, 0, 0, 0, 0, 0f, -1, 0);
+            shownIcon = 0;
+        }
         hudBlank();
     }
 
@@ -267,7 +284,7 @@ final class CpTurns {
             if (was == null || was.equals(s)) return;
             Dipo.log("CarPlay: route guidance source changed from " + was + " to " + s + ", clearing turn-by-turn");
             reset();
-            hudBlank();
+            release();
             if (restart != null) new Thread(restart, "hmgapi-cp-rg-restart").start();
             return;
         }
@@ -307,13 +324,31 @@ final class CpTurns {
         // StartRoute has no direction: clear the previous app's HUD arrow.
         if (x.type == 11 && icon == 1) hudBlank();
         cluster.crossroadName(x.afterRoad);
-        if (icon == 0) return;
+        if (icon == 0) {
+            if (shownIcon != 0 && shownId == id && shownIndex == list[0] && shownType == x.type) {
+                // the same maneuver, updated without its exit angle (DiPO resets it): keep its arrow
+                icon = shownIcon;
+            } else {
+                // geometry the table doesn't have: a plain direction, else no arrow, never the last turn's
+                icon = aheadIcon(x.type, x.side, x.junction, x.exit);
+                if (icon == 64) icon = NO_INFO;
+            }
+        }
+        // no HUD list for these (sendHud): blank the last turn's, once
+        if (icon < 64 && hudType != -1) hudBlank();
         cluster.tbtInfo(icon, 0, 0f, dist, 0, 0, unit, 0, 0);
+        shownId = id;
+        shownIndex = list[0];
+        shownType = x.type;
+        shownIcon = icon;
         sendHud(icon, id, u);
         sendHudDist(dist, unit);
         sendTrip(u);
         sendAhead(id, u);
     }
+
+    /** the cluster's main turn with no arrow */
+    static final int NO_INFO = 1;
 
     /**
      * The cluster icon for a maneuver: iAP2 ManeuverType, driving side (0 right-hand
