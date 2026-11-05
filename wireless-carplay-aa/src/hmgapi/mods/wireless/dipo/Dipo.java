@@ -90,7 +90,14 @@ public final class Dipo {
             m.nativePatch(a, "libCarPlayAudio.so");   // offer AAC and Opus on Wi-Fi
             m.nativePatch(a, "libCarPlayUtils.so");   // its AudioConverter calls go to libleafiaaac.so
         }
-        if (m.settingBoolean("picture", true)) picture(m.settingBoolean("picture_periodic", true));
+        if (m.settingBoolean("picture", true)) {
+            try {
+                picture(m.settingBoolean("picture_periodic", true));
+            } catch (Throwable t) {
+                // its own points only: turn-by-turn and the bridge still start
+                error("CarPlay picture: off", t);
+            }
+        }
         if (tbt) turnByTurn();
         if (bridge) bridge();
         if (!tbt && !bridge) return;
@@ -233,10 +240,13 @@ public final class Dipo {
      */
     private static void picture(boolean periodic) {
         final ClassLoader cl = app.classLoader;
-        if (!Points.has("dipo.carplay.force_key_frame")) {
-            log("CarPlay picture: no forceKeyFrame on this car, off");
-            return;
+        for (String id : new String[] { "dipo.carplay.force_key_frame", "dipo.carplay.decode_failure", "dipo.carplay.screen_timeout" }) {
+            if (!Points.has(id)) {
+                log("CarPlay picture: off on this car (" + id + " not mapped)");
+                return;
+            }
         }
+        Points.method(cl, "dipo.carplay.force_key_frame");   // there before anything is hooked (throws if not)
         HandlerThread t = new HandlerThread("hmgapi-cp-picture");
         t.start();
         pictureHandler = new Handler(t.getLooper());
