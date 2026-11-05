@@ -46,6 +46,9 @@ import hmgapi.hook.Points;
  *
  * Picture ("picture"): asks the phone for a new key frame when the CarPlay picture
  * stalls, which the stock app never does (Keyframes has the why and the when).
+ *
+ * Diagnostic log ("debug_log", off by default): DebugLog keeps a capped logcat of
+ * DiPO and the rest of the unit (noise tags dropped) in DiPO's data folder.
  */
 public final class Dipo {
     private Dipo() {}
@@ -92,12 +95,13 @@ public final class Dipo {
         }
         if (m.settingBoolean("picture", true)) {
             try {
-                picture(m.settingBoolean("picture_periodic", true));
+                picture(m.settingBoolean("picture_periodic", true), periodMs(m.settingString("picture_period", "5")));
             } catch (Throwable t) {
                 // its own points only: turn-by-turn and the bridge still start
                 error("CarPlay picture: off", t);
             }
         }
+        if (m.settingBoolean("debug_log", false)) DebugLog.start(a.context);
         if (tbt) turnByTurn();
         if (bridge) bridge();
         if (!tbt && !bridge) return;
@@ -140,6 +144,7 @@ public final class Dipo {
                 restartRouteGuidance();
             }
         });
+        turns.noIcon = mod.settingString("tbt_no_icon", "clear");
         rg = new RgListener();
         mod.hook(app.classLoader, "dipo.iap2_proxy.stop_route_guidance", new MethodHook() {
             @Override
@@ -153,7 +158,7 @@ public final class Dipo {
                 });
             }
         });
-        log("CarPlay: turn-by-turn to the cluster (HMG-API's route guidance listener)");
+        log("CarPlay: turn-by-turn to the cluster (HMG-API's route guidance listener), no-arrow turns: " + turns.noIcon);
     }
 
     static void post(Runnable r) {
@@ -230,6 +235,19 @@ public final class Dipo {
 
     static Handler pictureHandler;
     static Keyframes keyframes;
+    /** forceKeyFrame()'s answers since the last summary, for the log */
+    static final java.util.TreeMap<String, Integer> results = new java.util.TreeMap<String, Integer>();
+    /** a summary in HMG-API's log this often during a session */
+    static final long SUMMARY_MS = 60000;
+
+    /** setting picture_period ("5", "10", ...: seconds) */
+    static long periodMs(String v) {
+        try {
+            return Math.max(2, Integer.parseInt(v.trim())) * 1000L;
+        } catch (NumberFormatException e) {
+            return 5000;
+        }
+    }
     /** DiPO's CarPlayService, from the last callback */
     static volatile Object cpService;
 
@@ -238,7 +256,7 @@ public final class Dipo {
      * stalls (Keyframes says when). forceKeyFrame() runs on the part's own thread, never
      * on the callback's.
      */
-    private static void picture(boolean periodic) {
+    private static void picture(boolean periodic, long period) {
         final ClassLoader cl = app.classLoader;
         for (String id : new String[] { "dipo.carplay.force_key_frame", "dipo.carplay.decode_failure", "dipo.carplay.screen_timeout" }) {
             if (!Points.has(id)) {
@@ -250,7 +268,7 @@ public final class Dipo {
         HandlerThread t = new HandlerThread("hmgapi-cp-picture");
         t.start();
         pictureHandler = new Handler(t.getLooper());
-        keyframes = new Keyframes(periodic);
+        keyframes = new Keyframes(periodic, period);
         mod.hook(cl, "dipo.carplay.session_started", new MethodHook() {
             @Override
             protected void afterHookedMethod(final Param p) {
@@ -261,8 +279,15 @@ public final class Dipo {
                     public void run() {
                         cpService = cp;
                         keyframes.sessionStarted(transport);
+                        keyframes.summary();
+                        results.clear();
+                        firstPeriodic = true;
                         pictureHandler.removeCallbacks(TICK);
-                        if (keyframes.ticking()) pictureHandler.postDelayed(TICK, Keyframes.PERIOD_MS);
+                        pictureHandler.removeCallbacks(SUMMARY);
+                        log("CarPlay picture: session started, " + (transport == 1 ? "wireless" : "wired (transport " + transport + ")")
+                                + (keyframes.ticking() ? ", a key frame every " + keyframes.period / 1000 + " s" : ", key frames on a stall only"));
+                        if (keyframes.ticking()) pictureHandler.postDelayed(TICK, keyframes.period);
+                        pictureHandler.postDelayed(SUMMARY, SUMMARY_MS);
                     }
                 });
             }
@@ -275,6 +300,8 @@ public final class Dipo {
                     public void run() {
                         keyframes.sessionEnded();
                         pictureHandler.removeCallbacks(TICK);
+                        pictureHandler.removeCallbacks(SUMMARY);
+                        logSummary("session ended");
                     }
                 });
             }
@@ -307,7 +334,7 @@ public final class Dipo {
                 });
             }
         });
-        log("CarPlay picture: key frame on a stall" + (periodic ? ", and every " + Keyframes.PERIOD_MS / 1000 + " s on wireless" : ""));
+        log("CarPlay picture: key frame on a stall" + (periodic ? ", and every " + keyframes.period / 1000 + " s on wireless" : ""));
     }
 
     static final Runnable TICK = new Runnable() {
@@ -320,11 +347,28 @@ public final class Dipo {
         }
     };
 
+    /** once a minute during a session: what the picture part saw and did */
+    static final Runnable SUMMARY = new Runnable() {
+        @Override
+        public void run() {
+            logSummary("last minute");
+            pictureHandler.postDelayed(this, SUMMARY_MS);
+        }
+    };
+
+    /** the summary line, even when nothing happened (a quiet minute is an answer too) */
+    static void logSummary(String what) {
+        log("CarPlay picture: " + what + ": " + keyframes.summary() + "; answers " + (results.isEmpty() ? "none" : results.toString()));
+        results.clear();
+    }
+
+    static boolean firstPeriodic;
+
     static long now() {
         return android.os.SystemClock.uptimeMillis();
     }
 
-    /** on the picture thread; why null for the periodic one (not logged, it's every 10 s) */
+    /** on the picture thread; why null for the periodic one (logged the first time, then counted in the summaries) */
     static void forceKeyFrame(String why) {
         Object cp = cpService;
         if (cp == null) return;
@@ -332,8 +376,13 @@ public final class Dipo {
         keyframes.failures = 0;
         try {
             Object r = Points.call(app.classLoader, "dipo.carplay.force_key_frame", cp);
+            String k = String.valueOf(r);
+            Integer n = results.get(k);
+            results.put(k, n == null ? 1 : n + 1);
             if (why != null) log("CarPlay picture: key frame asked for after " + why + ": " + r);
             else if (failures > 0) log("CarPlay picture: periodic key frame, " + failures + " decoder failure(s) since the last: " + r);
+            else if (firstPeriodic) log("CarPlay picture: first periodic key frame of the session: " + r);
+            if (why == null) firstPeriodic = false;
         } catch (Throwable t) {
             error("CarPlay picture: forceKeyFrame failed", t);
         }

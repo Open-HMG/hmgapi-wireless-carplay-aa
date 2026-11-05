@@ -241,16 +241,32 @@ public final class CpTurnsTest {
         expect("next maneuver with no icon in the table (left, roundabout, -45): a plain left, not the last right",
                 "road [Circle]", "tbt 70 0 0.0 0.3 0 0 2 0 0", "hud f201460000" + utf16("Circle"), "2c 2 3 0 0 0 0 0 0 0");
         g.routeGuidance(msg(0, U16, i(1), 11, STR, s("0.5"), 13, U16, i(2)));
-        expect("next maneuver with no icon and no plain direction (type 47, angle 0): no arrow, HUD list blanked once",
-                "road [Ramp]", "2c 0 0 0 0 0 0 0 0 0", "lanes f1", "hud f2", "hud f2", "tbt 1 0 0.0 0.5 0 0 2 0 0", "2c 2 5 0 0 0 0 0 0 0");
+        expect("next maneuver with no icon and no plain direction (type 47, angle 0): ours cleared off the cluster, HUD blanked",
+                "road [Ramp]", "tbt 0 0 0.0 0.0 -1 0 0 0 -1", "sub 0.0 -1 0 0 0 0 0 0.0 -1 0", "2c 0 0 0 0 0 0 0 0 0", "lanes f1", "hud f2", "hud f2");
         g.routeGuidance(msg(0, U16, i(1), 11, STR, s("0.4"), 13, U16, i(2)));
-        expect("still no arrow: HUD not blanked again", "road [Ramp]", "tbt 1 0 0.0 0.4 0 0 2 0 0", "2c 2 4 0 0 0 0 0 0 0");
+        expect("still no arrow: nothing cleared again", "road [Ramp]");
+        g.routeGuidance(msg(0, U16, i(1), 11, STR, s("0.2"), 13, U16, i(0)));
+        expect("a turn with an arrow after it: shown again", "road [First St]", "tbt 67 0 0.0 0.2 0 0 2 0 0", "hud f201430000" + utf16("First St"), "2c 2 2 0 0 0 0 0 0 0");
         g.disconnected();
         expect("session ended with a turn up: cluster turn, trip and HUD cleared",
                 "tbt 0 0 0.0 0.0 -1 0 0 0 -1", "sub 0.0 -1 0 0 0 0 0 0.0 -1 0", "2c 0 0 0 0 0 0 0 0 0", "lanes f1", "hud f2", "hud f2");
         g.stop();
         expect("stopped with nothing of ours up: the car's own turn is left alone (HUD only)",
                 "2c 0 0 0 0 0 0 0 0 0", "lanes f1", "hud f2", "hud f2");
+
+        // the other tbt_no_icon choices
+        for (String mode : new String[] {"skip", "no_info"}) {
+            CpTurns h = new CpTurns(new android.content.Context(), c, null);
+            h.noIcon = mode;
+            h.maneuver(maneuver(0, RIGHT, 0, 0, 90, "First St", 100));
+            h.maneuver(maneuver(1, 47, 0, 0, 0, "Ramp", 900));
+            h.routeGuidance(msg(0, U16, i(1), 1, ENUM, i(1), 11, STR, s("0.1"), 12, ENUM, i(MILES), 13, U16, i(0)));
+            c.calls.clear();
+            h.routeGuidance(msg(0, U16, i(1), 11, STR, s("0.5"), 13, U16, i(1)));
+            if (mode.equals("skip")) expect("skip (2.1.0): nothing sent, the last arrow stays", "road [Ramp]");
+            else expect("no_info (nlw.1): icon 1, HUD list blanked once",
+                    "road [Ramp]", "2c 0 0 0 0 0 0 0 0 0", "lanes f1", "hud f2", "hud f2", "tbt 1 0 0.0 0.5 0 0 2 0 0", "2c 2 5 0 0 0 0 0 0 0");
+        }
 
         check("icons: sharp left 69, slight right 66, roundabout exit 96/97, U-turn left-hand traffic 73",
                 CpTurns.icon(1, 0, 0, -120, 1) == 69 && CpTurns.icon(2, 0, 0, 60, 1) == 66 && CpTurns.icon(2, 0, 1, 0, 1) == 96

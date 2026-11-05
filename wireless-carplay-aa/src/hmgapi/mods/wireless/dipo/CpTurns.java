@@ -49,6 +49,12 @@ final class CpTurns {
     String hudRoad;
     /** the main turn on the cluster: component, maneuver index, its type and icon (shownIcon 0: nothing of ours shown) */
     int shownId, shownIndex, shownType, shownIcon;
+    /**
+     * setting tbt_no_icon, for a maneuver with no arrow in the table and no plain direction:
+     * "clear" takes ours off the cluster (default), "skip" sends nothing (2.1.0: the last
+     * turn's arrow stays up), "no_info" sends icon 1 (2.1.1-nlw.1; a spinner on a US EV6)
+     */
+    String noIcon = "clear";
 
     CpTurns(Context context, Cluster cluster, Runnable restart) {
         this.context = context;
@@ -255,7 +261,9 @@ final class CpTurns {
             cluster.tbtInfo(0, 0, 0f, 0f, -1, 0, 0, 0, -1);
             cluster.tbtSubInfo(0f, -1, 0, 0, 0, 0, 0, 0f, -1, 0);
             shownIcon = 0;
+            Dipo.log("CarPlay turns: cluster turn and trip cleared");
         }
+        logged = null;
         hudBlank();
     }
 
@@ -324,16 +332,30 @@ final class CpTurns {
         // StartRoute has no direction: clear the previous app's HUD arrow.
         if (x.type == 11 && icon == 1) hudBlank();
         cluster.crossroadName(x.afterRoad);
+        String how = "table";
         if (icon == 0) {
             if (shownIcon != 0 && shownId == id && shownIndex == list[0] && shownType == x.type) {
                 // the same maneuver, updated without its exit angle (DiPO resets it): keep its arrow
                 icon = shownIcon;
+                how = "kept";
             } else {
                 // geometry the table doesn't have: a plain direction, else no arrow, never the last turn's
                 icon = aheadIcon(x.type, x.side, x.junction, x.exit);
-                if (icon == 64) icon = NO_INFO;
+                how = "direction";
+                if (icon == 64) {
+                    if ("no_info".equals(noIcon)) {
+                        icon = NO_INFO;
+                        how = "no_info";
+                    } else {
+                        logTurn(id, list[0], x, "no arrow (" + noIcon + ")", dist, unit);
+                        // clear: ours off the cluster (turn, trip, HUD), once; skip: leave it
+                        if (!"skip".equals(noIcon) && shownIcon != 0) release();
+                        return;
+                    }
+                }
             }
         }
+        logTurn(id, list[0], x, "icon " + icon + " (" + how + ")", dist, unit);
         // no HUD list for these (sendHud): blank the last turn's, once
         if (icon < 64 && hudType != -1) hudBlank();
         cluster.tbtInfo(icon, 0, 0f, dist, 0, 0, unit, 0, 0);
@@ -345,6 +367,17 @@ final class CpTurns {
         sendHudDist(dist, unit);
         sendTrip(u);
         sendAhead(id, u);
+    }
+
+    /** last turn logged, without the distance: a new line only when the maneuver or what's shown changes */
+    String logged;
+
+    void logTurn(int id, int index, Maneuver x, String what, float dist, int unit) {
+        String k = "maneuver " + id + "/" + index + " type " + x.type + " side " + x.side + " junction " + x.junction
+                + " exit " + x.exit + ": " + what;
+        if (k.equals(logged)) return;
+        logged = k;
+        Dipo.log("CarPlay turns: " + k + ", " + dist + " (unit " + unit + ")");
     }
 
     /** the cluster's main turn with no arrow */

@@ -9,6 +9,28 @@
       "apply": "rebuild"
     },
     {
+      "key": "tbt_no_icon",
+      "type": "choice",
+      "default": "clear",
+      "title": "CarPlay turns with no arrow",
+      "apply": "restart",
+      "description": "A maneuver the cluster has no arrow for (an exit or a merge with no direction, say).",
+      "options": [
+        {
+          "value": "clear",
+          "title": "Clear the turn from the cluster"
+        },
+        {
+          "value": "skip",
+          "title": "Leave the last turn up (2.1.0)"
+        },
+        {
+          "value": "no_info",
+          "title": "Send an empty turn (can show a spinner)"
+        }
+      ]
+    },
+    {
       "key": "bridge",
       "type": "toggle",
       "default": true,
@@ -34,9 +56,35 @@
       "key": "picture_periodic",
       "type": "toggle",
       "default": true,
-      "title": "On wireless CarPlay, also ask for a full frame every 10 seconds",
+      "title": "On wireless CarPlay, also ask for a full frame regularly",
       "apply": "restart",
-      "description": "For a picture that freezes without the decoder reporting it. Caps a freeze at about 10 seconds, for one extra full frame each time."
+      "description": "For a picture that freezes without the decoder reporting it. Caps a freeze at the interval below, for one extra full frame each time."
+    },
+    {
+      "key": "picture_period",
+      "type": "choice",
+      "default": "5",
+      "title": "Full frame interval",
+      "apply": "restart",
+      "description": "How often the regular full frame is asked for. node-CarPlay uses 5 seconds.",
+      "options": [
+        {
+          "value": "5",
+          "title": "5 seconds"
+        },
+        {
+          "value": "10",
+          "title": "10 seconds"
+        },
+        {
+          "value": "20",
+          "title": "20 seconds"
+        },
+        {
+          "value": "30",
+          "title": "30 seconds"
+        }
+      ]
     },
     {
       "key": "menu",
@@ -53,6 +101,14 @@
       "apply": "restart",
       "title": "USB drives and hubs don't start wired Android Auto",
       "description": "A hook in the Android Auto app (no files changed). Without it, a USB drive can block wireless Android Auto until the head unit restarts."
+    },
+    {
+      "key": "debug_log",
+      "type": "toggle",
+      "default": false,
+      "title": "Diagnostic log (test builds)",
+      "apply": "restart",
+      "description": "Keeps a log of the CarPlay app and the unit in the CarPlay app's data folder, 32 MB at most, only with 200 MB free. For bug reports; turn it off and delete the folder afterwards."
     }
   ]
 }

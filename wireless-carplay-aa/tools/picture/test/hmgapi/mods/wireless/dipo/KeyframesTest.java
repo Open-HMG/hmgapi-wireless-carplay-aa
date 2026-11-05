@@ -53,6 +53,28 @@ public final class KeyframesTest {
         check("periodic off: wireless doesn't tick", !r.ticking() && !r.tick(50000));
         check("periodic off: failures still recover", r.decodeFailure(Keyframes.NO_OUTPUT, 50000));
 
+        // a 5 s period (setting picture_period); never below the minimum gap
+        Keyframes f = new Keyframes(true, 5000);
+        f.sessionStarted(1);
+        check("5 s: first tick due after 5 s", f.nextTick(0) == 5000);
+        check("5 s: tick -> key frame", f.tick(5000));
+        check("5 s: tick 4 s later -> none", !f.tick(9000));
+        check("5 s: tick 5 s later -> key frame", f.tick(10000));
+        check("period below the gap is the gap", new Keyframes(true, 500).period == Keyframes.MIN_GAP_MS);
+
+        // the log's summary: counts by kind since the last one, then starts over
+        check("nothing yet: not eventful", !new Keyframes(true).eventful());
+        f.decodeFailure(Keyframes.BLACK_SCREEN, 20000);
+        f.decodeFailure(Keyframes.BLACK_SCREEN, 20500);
+        f.decodeFailure(0, 20600);
+        f.screenTimeout(30000);
+        String s = f.summary();
+        check("summary: periodic count", s.contains("asked 2 periodic"));
+        check("summary: one after a failure, one inside the gap", s.contains("1 after a decoder failure") && s.contains("1 inside the 2 s gap"));
+        check("summary: failures by type and resets", s.contains("2 black screen (1 resets)"));
+        check("summary: screen timeout", s.contains("1 after a screen timeout") && s.contains("screen timeouts 1"));
+        check("summary starts over", !f.eventful() && f.summary().contains("asked 0 periodic"));
+
         System.exit(fail);
     }
 }
