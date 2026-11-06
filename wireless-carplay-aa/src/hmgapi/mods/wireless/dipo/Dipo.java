@@ -253,6 +253,17 @@ public final class Dipo {
                 Bridge.onCpIapIn(p.thisObject, (byte[]) p.args[0], (Integer) p.args[1]);
             }
         });
+        // the CarPlay library's disableBluetooth: DiPO disconnects the phone's whole Bluetooth link, as for
+        // wired CarPlay. On a wireless session some phones then end it after about a minute (#85), so the
+        // link stays up while wireless CarPlay runs (persist.ev6.cpwl.keepbt=0: DiPO's way)
+        mod.hook(cl, "dipo.carplay.disable_bluetooth", new MethodHook() {
+            @Override
+            protected void beforeHookedMethod(Param p) {
+                if (!Bridge.sCpWireless || "0".equals(Bridge.prop("persist.ev6.cpwl.keepbt", "1"))) return;
+                log("DiPO: Bluetooth kept up for wireless CarPlay (disableBluetooth skipped)");
+                p.setResult(null);
+            }
+        });
         // DiPO's own wireless CarPlay (Hyundai's) stays off: the feature file is there for the other apps
         mod.hook(cl, "dipo.utils.is_support_wireless_carplay", new MethodHook() {
             @Override

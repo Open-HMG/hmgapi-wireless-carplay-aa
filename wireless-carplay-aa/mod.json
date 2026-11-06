@@ -99,6 +99,7 @@
       "dipo.carplay.session_started": "observe",
       "dipo.carplay.session_finalized": "observe",
       "dipo.carplay.iap_message": "observe",
+      "dipo.carplay.disable_bluetooth": "replace",
       "dipo.utils.is_support_wireless_carplay": "replace",
       "dipo.iap2_listener.connected": "replace",
       "dipo.iap2_listener.disconnected": "replace",
