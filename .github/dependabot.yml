@@ -1,0 +1,11 @@
+# The workflows' actions are pinned to commit SHAs; Dependabot opens a pull request
+# when a newer release comes out, so the pins don't go stale. Not HMG-API's mod
+# workflow: its pin moves with hmgapi-sdk.json, by hand (.github/check-pin.py).
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    ignore:
+      - dependency-name: Open-HMG/HMG-API

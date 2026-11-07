@@ -1,0 +1,138 @@
+# A release from a tag v<version>, refused unless it's wireless-carplay-aa/mod.json's
+# version: CI on the tag (HMG-API's mod workflow), then the package signed with the author
+# key, its NEMESIS packages and SHA256SUMS, attached to a *draft* GitHub release.
+# Publishing it stays a person's call (none before HMG-API 1.0.3). The run's summary
+# has the tools/catalog.py add command for the catalogue PR in HMG-API.
+#
+# Secret, in the "release" environment (v* tags only): MOD_KEY, the author key
+# (base64 of the PKCS#8 key file). Its public half is .github/mod-key.pub.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  version:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: The tag is mod.json's version
+        run: |
+          v=$(python3 -c 'import json; print(json.load(open("wireless-carplay-aa/mod.json"))["version"])')
+          test "v$v" = "$GITHUB_REF_NAME" || { echo "tag $GITHUB_REF_NAME, but wireless-carplay-aa/mod.json's version is $v"; exit 1; }
+      - run: python3 .github/check-pin.py
+
+  ci:
+    needs: version
+    uses: Open-HMG/HMG-API/.github/workflows/mod.yml@5b05ad6da3b5ae5e795240e2f1aaf7d893198997
+
+  release:
+    needs: ci
+    runs-on: ubuntu-24.04
+    environment: release
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false   # gh gets its token explicitly, below
+
+      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+
+      - name: Tools
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -yq clang lld zip unzip
+
+      - name: Which SDK
+        id: pin
+        run: |
+          python3 - <<'PY'
+          import json, os, re, sys
+          p = json.load(open("hmgapi-sdk.json"))
+          out = open(os.environ["GITHUB_OUTPUT"], "a")
+          if set(p) == {"ref"} and re.fullmatch(r"[0-9a-f]{40}", p["ref"]):
+              out.write("form=ref\nref=%s\n" % p["ref"])
+          elif set(p) == {"version", "sha256"} and re.fullmatch(r"[0-9a-f]{64}", p["sha256"]):
+              out.write("form=release\nversion=%s\nsha256=%s\n" % (p["version"], p["sha256"]))
+          else:
+              sys.exit("hmgapi-sdk.json: wanted {\"ref\": <sha>} or {\"version\", \"sha256\"}")
+          PY
+
+      - name: HMG-API at the pinned commit
+        if: steps.pin.outputs.form == 'ref'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Open-HMG/HMG-API
+          ref: ${{ steps.pin.outputs.ref }}
+          path: .hmgapi-src
+          persist-credentials: false
+
+      - name: The SDK
+        env:
+          FORM: ${{ steps.pin.outputs.form }}
+          VERSION: ${{ steps.pin.outputs.version }}
+          SHA256: ${{ steps.pin.outputs.sha256 }}
+        run: |
+          S="$RUNNER_TEMP/hmgapi-sdk"
+          if [ "$FORM" = ref ]; then
+            (cd .hmgapi-src && ./build.sh sdk)
+            Z=$(ls .hmgapi-src/out/dist/hmgapi-mod-sdk-*.zip)
+          else
+            Z="$RUNNER_TEMP/hmgapi-mod-sdk-$VERSION.zip"
+            curl -fsSL -o "$Z" "https://github.com/Open-HMG/HMG-API/releases/download/v$VERSION/hmgapi-mod-sdk-$VERSION.zip"
+            echo "$SHA256  $Z" | sha256sum -c - || { echo "the SDK zip isn't the one hmgapi-sdk.json pins"; exit 1; }
+          fi
+          rm -rf "$S" && mkdir -p "$S" && unzip -q "$Z" -d "$S"
+          rm -rf .hmgapi-src
+          echo "HMGAPI_SDK=$S" >> "$GITHUB_ENV"
+          pip install --require-hashes -r "$S/requirements.txt"
+
+      - name: Key
+        env:
+          MOD_KEY: ${{ secrets.MOD_KEY }}
+        run: |
+          umask 077
+          k="$RUNNER_TEMP/keys"
+          mkdir -p "$k"
+          echo "$MOD_KEY" | base64 -d > "$k/mod.key"
+          test -s "$k/mod.key" || { echo "MOD_KEY is missing (the release environment's secret)"; exit 1; }
+          echo "MOD_KEY_FILE=$k/mod.key" >> "$GITHUB_ENV"
+
+      - name: Signed package and NEMESIS packages
+        run: .github/release.sh "$GITHUB_REF_NAME" "$MOD_KEY_FILE"
+
+      - name: Forget the key
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/keys"
+
+      - name: Draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v=${GITHUB_REF_NAME#v}
+          notes=".github/release-notes/$GITHUB_REF_NAME.md"
+          if [ -f "$notes" ]; then set -- --notes-file "$notes"; else set -- --generate-notes; fi
+          pre=""; case "$GITHUB_REF_NAME" in *-*) pre="--prerelease" ;; esac
+          gh release create "$GITHUB_REF_NAME" --draft $pre --verify-tag --title "Wireless CarPlay + Android Auto $v" "$@" out/assets/*
+          {
+            echo "### Draft release $GITHUB_REF_NAME"
+            echo "Not published. Once it is, the catalogue PR in HMG-API (a maintainer's) starts with:"
+            echo '```'
+            cat out/catalog-command.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          cat out/catalog-command.txt

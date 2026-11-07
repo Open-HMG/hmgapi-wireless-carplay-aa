@@ -1,0 +1,46 @@
+name: Add my car
+description: The mod doesn't list your car, or you tried it on one it doesn't list.
+title: "Car: "
+labels: [car-report]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The mod lists each car by model, region and head unit software (`system` in `wireless-carplay-aa/mod.json`).
+        Only the newest software for each region is supported, and for now only cars sold in the USA and Canada (other regions wait).
+        Your car also needs a hook map in HMG-API: if the HMG-API app says it has none, open [a Car Report issue in HMG-API](https://github.com/Open-HMG/HMG-API/issues/new/choose) first.
+        Please don't post your VIN, serial numbers, phone numbers or account details.
+  - type: input
+    id: car
+    attributes:
+      label: Car
+      description: Make, model, year, trim and region.
+    validations:
+      required: true
+  - type: input
+    id: firmware
+    attributes:
+      label: Head unit software
+      description: From the Car Report, or Settings → General → Software info.
+    validations:
+      required: true
+  - type: dropdown
+    id: tried
+    attributes:
+      label: Did you try the mod with "Install anyway"?
+      options:
+        - "Yes, and it works"
+        - "Yes, and something doesn't work (say what below)"
+        - "No"
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What works
+      description: CarPlay, Android Auto, sound, Bluetooth, turn-by-turn on the cluster or HUD.
+  - type: textarea
+    id: report
+    attributes:
+      label: Car Report
+      description: Attach the Car Report's `.json` (HMG-API app → Car Report).
