@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: HMG-API itself (installing, the app, other mods, Car Reports, hook maps)
+    url: https://github.com/Open-HMG/HMG-API/issues/new/choose
+    about: Problems that aren't this mod's go to HMG-API.
+  - name: Install guide and help
+    url: https://github.com/Open-HMG/HMG-API/wiki
+    about: Installing, removing, and fixing common problems.
+  - name: Security problem
+    url: https://github.com/Open-HMG/HMG-API/security/policy
+    about: Please report security problems privately, not as an issue.

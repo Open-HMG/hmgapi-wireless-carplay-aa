@@ -1,0 +1,7 @@
+# Who reviews what. The main branch requires a code owner's review.
+# Everything else: one Open-HMG maintainer.
+*                               @Open-HMG/maintainers
+
+# CI, releases and signing; native code (libraries patched or loaded on the car): the maintainer.
+/.github/                       @VysseCodes
+/wireless-carplay-aa/native/    @VysseCodes

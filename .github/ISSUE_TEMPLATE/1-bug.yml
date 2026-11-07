@@ -1,0 +1,93 @@
+name: Wireless CarPlay or Android Auto doesn't work
+description: A bug in this mod (connecting, picture, sound, Bluetooth, turn-by-turn on the cluster or HUD).
+title: "Bug: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Please don't post your VIN, serial numbers, phone numbers or account details: nothing here needs them.
+        A **Car Report** (HMG-API app → Car Report) helps a lot: attach its `.json` file, from the USB stick (folder "HMG-API reports") or over adb (`adb pull /data/hmgapi/public/reports/`).
+        A problem with HMG-API itself (installing, the app, other mods) goes to [HMG-API's issues](https://github.com/Open-HMG/HMG-API/issues/new/choose).
+  - type: input
+    id: car
+    attributes:
+      label: Car
+      description: Make, model, year, trim and region.
+    validations:
+      required: true
+  - type: input
+    id: firmware
+    attributes:
+      label: Head unit software
+      description: From the Car Report, or Settings → General → Software info (e.g. 260507). Only each region's newest software is supported.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Mod and HMG-API versions
+      description: Both are in the HMG-API app. Say if you used "Install anyway" because the mod doesn't list your car.
+    validations:
+      required: true
+  - type: dropdown
+    id: which
+    attributes:
+      label: Which
+      options:
+        - CarPlay
+        - Android Auto
+        - Both
+    validations:
+      required: true
+  - type: input
+    id: phone
+    attributes:
+      label: Phone
+      description: Model and iOS / Android version.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: What goes wrong
+      multiple: true
+      options:
+        - The phone doesn't find the car, or doesn't connect
+        - It connects, then drops
+        - Picture (black, frozen, wrong size)
+        - Sound
+        - Bluetooth (calls, the phone disconnects)
+        - Turn-by-turn on the cluster or HUD
+        - Something else
+    validations:
+      required: true
+  - type: dropdown
+    id: wired
+    attributes:
+      label: Does it work with a cable?
+      options:
+        - "Yes"
+        - "No"
+        - Didn't try
+  - type: dropdown
+    id: usb
+    attributes:
+      label: Was a USB stick or hub in the car's USB port?
+      description: A USB drive can keep Android Auto in its wired mode for a while (see the wiki's Troubleshooting page).
+      options:
+        - "No"
+        - "Yes"
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, what happened instead. Does it happen every time?
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log
+      description: HMG-API app → Logs → "Warnings and errors" (a photo is fine), or attach a Car Report.
+      render: text
