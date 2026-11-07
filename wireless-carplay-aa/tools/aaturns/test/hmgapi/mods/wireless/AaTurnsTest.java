@@ -114,7 +114,55 @@ public final class AaTurnsTest {
         d.nextTurn("S 3 0a0102", 0, 33, 0, 0);
         expect("navigation message: nothing to the cluster");
         check("... passed on to mods that asked (projection events)", "S 3 0a0102".equals(hmgapi.hook.ProjectionHooks.last));
+
+        // tbt_standard: the car navigation's own format near a maneuver (its cluster code)
+        AaTurns s = new AaTurns(new android.content.Context(), c, new Handler());
+        s.standardTurns = true;
+        s.status(1);
+        s.nextTurn("Elm St", LEFT, TURN, -1, 0);
+        c.calls.clear();
+        s.nextTurnDistance(1200, 90, 700, MILES_P1);
+        expect("standard: 0.7 mi out: the icon (70 left), bar off", "tbt 70 65535 270.0 0.7 0 0 2 0 0", "2c 2 7 0 0 0 0 0 0 0");
+        s.nextTurnDistance(440, 40, 273, MILES_P1);
+        expect("standard: 440 m: TURN (13) 270, bar 90; HUD keeps its icon", "tbt 13 0 270.0 0.273 0 0 2 90 0", "2c 2 3 0 0 0 0 0 0 0");
+        s.nextTurnDistance(274, 25, 900000, FEET);
+        expect("standard: 900 ft (274 m): bar 50", "tbt 13 0 270.0 900.0 0 0 3 50 0", "2c 3 0 900 0 0 0 0 0 0");
+        s.nextTurnDistance(9, 1, 29529, FEET);
+        expect("standard: 29 ft: bar 10 (at least 1)", "tbt 13 0 270.0 29.529 0 0 3 10 0", "2c 3 0 29 0 0 0 0 0 0");
+        s.nextTurn("Hwy 9", 0, 14, -1, 0);
+        expect("standard: straight near: TURN 0", "road [Hwy 9]", "tbt 13 0 0.0 29.529 0 0 3 10 0",
+                "hud f201410000" + utf16("Hwy 9"), "2c 3 0 29 0 0 0 0 0 0");
+
+        final int SLIGHT = 3, SHARP = 5, UTURN = 6, ON_RAMP = 7, OFF_RAMP = 8, FORK = 9, MERGE = 10, RB_EXIT = 12, RB_BOTH = 13, DEST = 19, FERRY = 16;
+        stdCase("right turn", TURN, RIGHT, 67, 90, 100, "13 90 20");
+        stdCase("slight right: 45 (the car's), not the icon's 30", SLIGHT, RIGHT, 66, 30, 100, "13 45 20");
+        stdCase("slight left: 315", SLIGHT, LEFT, 71, 330, 100, "13 315 20");
+        stdCase("sharp right: 135", SHARP, RIGHT, 68, 135, 100, "13 135 20");
+        stdCase("sharp left: 225", SHARP, LEFT, 69, 225, 100, "13 225 20");
+        stdCase("U-turn (left): U_TURN 270", UTURN, LEFT, 72, 270, 100, "31 270 20");
+        stdCase("fork right: FORK_2 90", FORK, RIGHT, 173, 0, 100, "25 90 20");
+        stdCase("exit right: EXIT_RIGHT 90", OFF_RAMP, RIGHT, 81, 30, 300, "17 90 60");
+        stdCase("exit left: EXIT_LEFT 270", OFF_RAMP, LEFT, 82, 330, 300, "18 270 60");
+        stdCase("merge: TURN 0", MERGE, 0, 65, 0, 100, "13 0 20");
+        stdCase("roundabout, exit at 90: roundabout (32), the exit's direction", RB_BOTH, RIGHT, 99, 90, 200, "32 90 40");
+        stdCase("roundabout, left-hand traffic: 33", RB_EXIT, LEFT, 33, 0, 200, "33 0 40");
+        stdCase("on-ramp: the icon, with the bar", ON_RAMP, RIGHT, 173, 30, 200, "173 30 40");
+        stdCase("ferry: the icon, with the bar", FERRY, 0, 176, 0, 200, "176 0 40");
+        stdCase("turn without a side: the icon, with the bar", TURN, 0, 64, 0, 200, "64 0 40");
+        stdCase("destination on the right: 113, no bar", DEST, RIGHT, 3, 0, 100, "113 0 0");
+        stdCase("destination on the left: 114", DEST, LEFT, 3, 0, 100, "114 0 0");
+        stdCase("destination ahead: 112, also far out", DEST, 0, 3, 0, 5000, "112 0 0");
+        stdCase("destination within 20 m: ARRIVED (3)", DEST, RIGHT, 3, 0, 19, "3 0 0");
+        stdCase("457 m: in, bar 90", TURN, RIGHT, 67, 90, 457, "13 90 90");
+        stdCase("458 m: out, the icon, bar off", TURN, RIGHT, 67, 90, 458, "67 90 0");
+        stdCase("no distance yet: the icon, bar off", TURN, RIGHT, 67, 90, -1, "67 90 0");
         System.exit(fail);
+    }
+
+    static void stdCase(String what, int ev, int side, int icon, int iconDir, int m, String want) {
+        int[] r = AaTurns.standard(ev, side, icon, iconDir, m);
+        String got = r[0] + " " + r[1] + " " + r[2];
+        check("standard: " + what + (got.equals(want) ? "" : " (got " + got + ", wanted " + want + ")"), got.equals(want));
     }
 
     static void check(String what, boolean ok) {

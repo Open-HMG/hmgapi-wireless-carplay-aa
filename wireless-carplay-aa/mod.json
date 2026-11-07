@@ -84,6 +84,7 @@
       "framework.navigation_cluster.update_tp_turn_list": "replace",
       "framework.navigation_cluster.update_tp_turn_list_new": "replace",
       "framework.navigation_cluster.update_tp_lane_info": "replace",
+      "framework.navigation_cluster.update_lane_info": "replace",
       "iap2.init_info.check_supports_features": "change",
       "iap2.service.on_create": "observe",
       "iap2.service_receiver.on_receive": "observe",
