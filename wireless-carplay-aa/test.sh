@@ -4,28 +4,22 @@
 # lib/, onebin/, permissions/). Every part on: each rebuilt file must match the
 # set's expect list (the engine checks), props go live, nothing touches
 # build.prop; restore must give back every stock byte.
-#   mods/wireless-carplay-aa/test.sh [stock dir] [product] [onebin]
+# Runs with the HMG-API mod SDK (HMGAPI_SDK, set by the mod workflow).
+#   HMGAPI_SDK=<sdk> wireless-carplay-aa/test.sh [stock dir] [product] [onebin]
 set -e
-cd "$(dirname "$0")/../.."
-REPO=$PWD
+M=$(cd "$(dirname "$0")" && pwd)
 S=${1:-$HOME/hmg-private/stock/ev6}
-PRODUCT=${2:-CVEV.USA.0000.V015.012.260507}
-ONEBIN=${3:-cvev_us}
+export HMGAPI_PRODUCT=${2:-CVEV.USA.0000.V015.012.260507}
+export HMGAPI_ONEBIN=${3:-cvev_us}
+PRODUCT=$HMGAPI_PRODUCT ONEBIN=$HMGAPI_ONEBIN
+T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
+R=$T/root
+. "${HMGAPI_SDK:?set HMGAPI_SDK to the unpacked HMG-API mod SDK}/test/lib.sh"
 # its NEMESIS package refuses the NEMESIS packages that change what it changes (mod.json "nemesis_conflicts")
-d=$(HMGAPI_NEMESIS_CONFLICTS=/dev/null tools/nemesis-meta.py depends hmgapi.wireless-carplay-aa 'hmgapi@>=1.0' --mod mods/wireless-carplay-aa/mod.json)
+d=$(HMGAPI_NEMESIS_CONFLICTS=/dev/null python3 "$HMGAPI_SDK/bin/nemesis-meta.py" depends hmgapi.wireless-carplay-aa 'hmgapi@>=1.0' --mod "$M/mod.json")
 if [ "$d" = "hmgapi@>=1.0,!wireless.projection,!projection.tbt" ]; then echo "ok    NEMESIS package refuses wireless.projection and projection.tbt"
 else echo "FAIL  NEMESIS package depends: [$d]"; exit 1; fi
 [ -d "$S/app" ] || { echo "no stock tree at $S (skipped)"; exit 0; }
-[ -x out/lpatch-host ] || { echo "run ./build.sh lpatch first"; exit 1; }
-CP=$(mktemp -d); T=$(mktemp -d); trap 'rm -rf "$T" "$CP"' EXIT
-javac --release 8 -Xlint:-options -nowarn -d "$CP" core/runtime/java/hmgapi/engine/*.java 2>/dev/null
-R=$T/root
-fail=0
-check() { if [ "$2" = "$3" ]; then echo "ok    $1"; else echo "FAIL  $1: wanted [$2], got [$3]"; fail=1; fi; }
-has() { case "$3" in *"$2"*) echo "ok    $1" ;; *) echo "FAIL  $1: wanted [$2] in [$3]"; fail=1 ;; esac; }
-eng() { set +e; out=$(HMGAPI_ROOT=$R HMGAPI_HOST=1 HMGAPI_TEST_ANY_CAR=1 HMGAPI_PRODUCT=$PRODUCT HMGAPI_ONEBIN=$ONEBIN \
-        HMGAPI_LPATCH=$REPO/out/lpatch-host java -cp "$CP" hmgapi.engine.Engine "$@" 2>&1); rc=$?; set -e; }
-tree() { (cd $R/system && find . -type f | sort | while read f; do echo "$(md5sum < "$f" | cut -c1-32) $f"; done) }
 
 mkdir -p $R/system/app $R/system/lib $R/system/etc/permissions $R/system/onebin/$ONEBIN $R/sys/bus/sdio/devices/mmc1:0001:1 $R/data/hmgapi/mods $R/data/hmgapi/settings
 cp $S/app/* $R/system/app/; cp $S/lib/* $R/system/lib/
@@ -33,8 +27,7 @@ cp $S/onebin/$ONEBIN/featurexml.cfg $R/system/onebin/$ONEBIN/
 [ -d $S/permissions ] && cp $S/permissions/* $R/system/etc/permissions/
 printf 'ro.build.product=%s\npersist.ium.support=none\n' "$PRODUCT" > $R/system/build.prop
 printf 'ro.build.product=%s\nro.board.platform=tcc803x\nro.build.version.release=4.4.2\nro.mobis.onebindir=%s\n' "$PRODUCT" "$ONEBIN" > $R/props.txt
-cp -r mods/wireless-carplay-aa $R/data/hmgapi/mods/
-rm -f $R/data/hmgapi/mods/wireless-carplay-aa/test.sh
+install_mod "$M"
 BEFORE=$(tree)
 
 eng plan
