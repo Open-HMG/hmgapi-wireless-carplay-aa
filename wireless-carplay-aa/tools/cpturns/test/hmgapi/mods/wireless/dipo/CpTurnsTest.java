@@ -107,7 +107,8 @@ public final class CpTurnsTest {
                 "road [Test Road]", "tbt 67 0 0.0 100.0 0 0 0 0 0",
                 "hud f201430000" + utf16("Test Road"), "2c 0 0 100 0 0 0 0 0 0");
         t.routeGuidance(msg(0, U16, i(1), 1, ENUM, i(0)));
-        expect("India route stop still clears HUD", "2c 0 0 0 0 0 0 0 0 0", "lanes f1", "hud f2", "hud f2");
+        expect("India route stop still clears HUD (and the cluster turn and trip, as any state 0)",
+                "tbt 0 0 0.0 0.0 -1 0 0 0 -1", "sub 0.0 -1 0 0 0 0 0 0.0 -1 0", "2c 0 0 0 0 0 0 0 0 0", "lanes f1", "hud f2", "hud f2");
     }
 
     public static void main(String[] a) throws Exception {
