@@ -11,6 +11,10 @@ REPO=$PWD
 S=${1:-$HOME/hmg-private/stock/ev6}
 PRODUCT=${2:-CVEV.USA.0000.V015.012.260507}
 ONEBIN=${3:-cvev_us}
+# its NEMESIS package refuses the NEMESIS packages that change what it changes (mod.json "nemesis_conflicts")
+d=$(HMGAPI_NEMESIS_CONFLICTS=/dev/null tools/nemesis-meta.py depends hmgapi.wireless-carplay-aa 'hmgapi@>=1.0' --mod mods/wireless-carplay-aa/mod.json)
+if [ "$d" = "hmgapi@>=1.0,!wireless.projection,!projection.tbt" ]; then echo "ok    NEMESIS package refuses wireless.projection and projection.tbt"
+else echo "FAIL  NEMESIS package depends: [$d]"; exit 1; fi
 [ -d "$S/app" ] || { echo "no stock tree at $S (skipped)"; exit 0; }
 [ -x out/lpatch-host ] || { echo "run ./build.sh lpatch first"; exit 1; }
 CP=$(mktemp -d); T=$(mktemp -d); trap 'rm -rf "$T" "$CP"' EXIT

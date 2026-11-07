@@ -7,6 +7,7 @@
     "VysseCodes"
   ],
   "license": "AGPL-3.0",
+  "nemesis_conflicts": ["wireless.projection", "projection.tbt"],
   "description": "Wireless CarPlay and Android Auto on the head unit's hotspot, with turn-by-turn on the cluster and HUD.",
   "system": [
     {
