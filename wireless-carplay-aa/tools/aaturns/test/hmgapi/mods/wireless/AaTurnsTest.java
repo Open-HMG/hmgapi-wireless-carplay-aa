@@ -107,6 +107,23 @@ public final class AaTurnsTest {
         expect("roundabout, exit at 100 degrees", "road [Circle]", "tbt 99 65535 90.0 -1.0 0 0 0 254 -2", "hud f201630000" + utf16("Circle"));
         d.nextTurn("Old Rd", 0, 11, 0, 0);
         expect("roundabout enter: not for the cluster");
+        final int UNSPECIFIED = 3;
+        d.nextTurn("Old Rd", UNSPECIFIED, 12, -1, 0);
+        expect("in the roundabout (exit, no side, no angle): its exit stays on, not 64 (the cluster's spinner)",
+                "road [Old Rd]", "tbt 99 65535 90.0 -1.0 0 0 0 254 -2", "hud f201630000" + utf16("Old Rd"));
+        d.nextTurn("Pine St", RIGHT, TURN, -1, 0);
+        expect("after the roundabout: the next turn", "road [Pine St]", "tbt 67 65535 90.0 -1.0 0 0 0 254 -2", "hud f201430000" + utf16("Pine St"));
+        d.nextTurn("Ring Rd", UNSPECIFIED, 12, -1, 0);
+        expect("roundabout exit with no roundabout before it: straight (65), not 64",
+                "road [Ring Rd]", "tbt 65 65535 0.0 -1.0 0 0 0 254 -2", "hud f201410000" + utf16("Ring Rd"));
+        d.nextTurn("Loop", RIGHT, 13, -1, 0);
+        expect("roundabout with no angle: straight (65), not 64",
+                "road [Loop]", "tbt 65 65535 0.0 -1.0 0 0 0 254 -2", "hud f201410000" + utf16("Loop"));
+        d.nextTurn("Circle Dr", RIGHT, 64, 100, 13 | 2 << 8);
+        d.nextTurnDistance(800, 0, 500, MILES | 0x200);
+        d.nextTurn(null, 0, 67, 0, 1);
+        expect("a roundabout in the turns ahead: its exit icon and direction (99, 90), not 64 and the raw angle",
+                "list {1 99 90 [Circle Dr] [2] " + (800 / 1609f) + " 2}");
         d.stop();
         d.end();
         expect("connection ends during a route: cleared", "dest 0 []", "tbt 0 0 0.0 0.0 -1 0 0 0 -1",

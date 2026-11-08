@@ -52,6 +52,20 @@ its check is inverted. 65535 is what the projection icons always carried, and wi
 `TURN` type it draws a road in every direction, so the mod sends 0 with the car's own
 types and 65535 with the icons.
 
+## Roundabouts and "no direction"
+
+Android Auto guides a roundabout in two steps: `ROUNDABOUT_ENTER_AND_EXIT` with the exit's
+angle before it, then `ROUNDABOUT_EXIT` once the car is in it, usually with no side and no
+angle. The Wireless mod keeps the exit icon from the first for the second, until the next
+maneuver.
+
+It never sends 64 (0x40, "no direction"): the cluster draws its loading spinner for it, in
+the turn and in the HUD list, measured on a Creta Electric
+([sirishant/HMG-API, `docs/creta/cluster-turn-by-turn.md`](https://github.com/sirishant/HMG-API/blob/creta-su2iev/docs/creta/cluster-turn-by-turn.md)),
+and on the road it stayed on through the roundabout until the next instruction. A
+roundabout with no exit to show gets straight (65). Roundabouts in the turns ahead get the
+same icons, with the cluster's direction rather than Android Auto's angle.
+
 ## Lanes
 
 The car navigation keeps running under a phone's guidance with no route, and sends the

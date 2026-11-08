@@ -64,6 +64,12 @@ final class AaTurns {
     int meters = -1;
     boolean navLive;
     /**
+     * The roundabout being guided through: the exit icon and direction its
+     * ROUNDABOUT_ENTER_AND_EXIT gave, kept for the ROUNDABOUT_EXIT Android Auto sends once the
+     * car is in it (with no side and no angle). -1: none.
+     */
+    int roundaboutType = -1, roundaboutDir;
+    /**
      * Setting tbt_standard (off by default): the next maneuver as the car's own navigation sends it
      * (standard(), from its cluster code: libExSLNavi, Navi::CLUSTER::Turn::CInformation,
      * US Ioniq 5 260507). Within GUIDE_WINDOW of a maneuver: its type (TURN, U_TURN,
@@ -140,6 +146,7 @@ final class AaTurns {
         turnSide = side;
         turnAngle = angle;
         turnNumber = number;
+        if (!isRoundabout(ev)) roundaboutType = -1;
         switch (ev) {
             case DEPART:
                 if (first) {
@@ -217,6 +224,7 @@ final class AaTurns {
         tripMeters = -1;
         tripSeconds = -1;
         estPoint = 0;
+        roundaboutType = -1;
         release();
     }
 
@@ -231,6 +239,7 @@ final class AaTurns {
         meters = -1;
         displayType = 0;
         direction = 0;
+        roundaboutType = -1;
     }
 
     /** The connection ended: clear what we showed, if a route was on. */
@@ -440,28 +449,47 @@ final class AaTurns {
         }
     }
 
-    /** Roundabouts: the exit's angle picks the icon (the cluster draws them for right-hand traffic). */
+    /**
+     * Roundabouts: the exit's angle picks the icon (the cluster draws them for right-hand traffic).
+     * Once the car is in the roundabout, Android Auto sends ROUNDABOUT_EXIT, usually with no side
+     * and no angle: the exit its ROUNDABOUT_ENTER_AND_EXIT gave stays on until the next
+     * maneuver. Never type 64 ("no direction"): the cluster draws its loading spinner for it, in
+     * the turn and in the HUD list (Creta Electric symbol sweep; on the road it stayed until
+     * the next turn). Straight (65) where there's no exit to show.
+     */
     void setRoundaboutType(int ev, int side, int a) {
         if (ev == ROUNDABOUT_EXIT) {
-            if (side == RIGHT) {
-                displayType = 32;
-            } else if (side == LEFT) {
-                displayType = 33;
+            if (side == RIGHT || side == LEFT) {
+                displayType = side == RIGHT ? TYPE_ROUNDABOUT_RIGHT : TYPE_ROUNDABOUT_LEFT;
+                if (roundaboutType >= 0) direction = roundaboutDir;
+            } else if (roundaboutType >= 0) {
+                displayType = roundaboutType;
+                direction = roundaboutDir;
             } else {
-                displayType = 64;
-                direction = 0;
+                int[] r = roundabout(a);
+                displayType = r[0];
+                direction = r[1];
             }
             return;
         }
-        if (a == 180) { displayType = 96; direction = 0; }
-        else if (a >= 135 && a < 180) { displayType = 97; direction = 45; }
-        else if (a >= 90 && a < 135) { displayType = 99; direction = 90; }
-        else if (a >= 45 && a < 90) { displayType = 100; direction = 135; }
-        else if ((a >= 0 && a < 45) || (a > 315 && a <= 360)) { displayType = 102; direction = 180; }
-        else if (a > 270 && a <= 315) { displayType = 103; direction = 225; }
-        else if (a > 225 && a <= 270) { displayType = 105; direction = 270; }
-        else if (a > 180 && a <= 225) { displayType = 106; direction = 315; }
-        else { displayType = 64; direction = 0; }
+        int[] r = roundabout(a);
+        displayType = r[0];
+        direction = r[1];
+        roundaboutType = r[0] == 65 ? -1 : r[0];
+        roundaboutDir = r[1];
+    }
+
+    /** {icon, direction} for a roundabout exit at Android Auto's turn angle a; straight (65) without one. */
+    static int[] roundabout(int a) {
+        if (a == 180) return new int[] { 96, 0 };
+        if (a >= 135 && a < 180) return new int[] { 97, 45 };
+        if (a >= 90 && a < 135) return new int[] { 99, 90 };
+        if (a >= 45 && a < 90) return new int[] { 100, 135 };
+        if ((a >= 0 && a < 45) || (a > 315 && a <= 360)) return new int[] { 102, 180 };
+        if (a > 270 && a <= 315) return new int[] { 103, 225 };
+        if (a > 225 && a <= 270) return new int[] { 105, 270 };
+        if (a > 180 && a <= 225) return new int[] { 106, 315 };
+        return new int[] { 65, 0 };
     }
 
     // ---- HUD
@@ -472,7 +500,7 @@ final class AaTurns {
         if (type < 64) return;
         int next = 0;
         if (aheadOk[0]) {
-            next = aheadType(aheadEv[0], aheadSide[0]);
+            next = aheadType(aheadEv[0], aheadSide[0], aheadAng[0]);
             hudFresh = true;
         } else if (hudFresh) {
             next = hudNext;
@@ -579,8 +607,9 @@ final class AaTurns {
 
     // ---- the turns ahead (cluster turn list)
 
-    static int aheadType(int ev, int side) {
+    static int aheadType(int ev, int side, int angle) {
         switch (ev) {
+            case ROUNDABOUT_ENTER: case ROUNDABOUT_EXIT: case ROUNDABOUT_ENTER_AND_EXIT: return roundabout(angle)[0];
             case STRAIGHT: case MERGE: return 65;
             case SLIGHT_TURN: return side == RIGHT ? 66 : side == LEFT ? 71 : 64;
             case TURN: return side == RIGHT ? 67 : side == LEFT ? 70 : 64;
@@ -588,6 +617,10 @@ final class AaTurns {
             case U_TURN: return side == RIGHT ? 73 : 72;
             default: return 64;
         }
+    }
+
+    static boolean isRoundabout(int ev) {
+        return ev == ROUNDABOUT_ENTER || ev == ROUNDABOUT_EXIT || ev == ROUNDABOUT_ENTER_AND_EXIT;
     }
 
     void sendAhead(int n) {
@@ -600,8 +633,8 @@ final class AaTurns {
         for (int k = 0; k < n && i < count; k++) {
             if (!aheadOk[k]) continue;
             Cluster.Turn t = new Cluster.Turn();
-            t.type = aheadType(aheadEv[k], aheadSide[k]);
-            t.direction = Math.max(aheadAng[k], 0);
+            t.type = aheadType(aheadEv[k], aheadSide[k], aheadAng[k]);
+            t.direction = isRoundabout(aheadEv[k]) ? roundabout(aheadAng[k])[1] : Math.max(aheadAng[k], 0);
             t.traffic = 0;
             t.no = i + 1;
             t.name = aheadName[k] == null ? "" : aheadName[k];
@@ -628,7 +661,7 @@ final class AaTurns {
         }
         cluster.turnList(list);
         if (aheadOk[0]) {
-            hudNext = aheadType(aheadEv[0], aheadSide[0]);
+            hudNext = aheadType(aheadEv[0], aheadSide[0], aheadAng[0]);
             hudFresh = true;
         }
         for (int k = 0; k < 3; k++) aheadOk[k] = false;
