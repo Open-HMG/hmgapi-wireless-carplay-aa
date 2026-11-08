@@ -24,6 +24,11 @@ Reports, hook maps) go to [HMG-API](https://github.com/Open-HMG/HMG-API/issues/n
 
 ## Releases (maintainers)
 
+Versions follow HMG-API's [docs/releasing.md](https://github.com/Open-HMG/HMG-API/blob/main/docs/releasing.md)
+(finals, release candidates, betas, hotfixes), with this mod's own numbers. A
+pre-release (`v2.2.0-rc.1`) is a GitHub pre-release, never "Latest", and isn't added to
+the catalogue; its `"hmgapi"` may name a HMG-API rc (`">=1.1.0-rc.1"`), a final's can't.
+
 1. Set `version` in `wireless-carplay-aa/mod.json` by pull request (and `"hmgapi"` if
    the mod now needs a newer HMG-API; say so in the release notes,
    `.github/release-notes/v<version>.md`).
