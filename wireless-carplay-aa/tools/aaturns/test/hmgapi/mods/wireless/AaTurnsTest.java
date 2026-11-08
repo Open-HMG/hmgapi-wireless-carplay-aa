@@ -107,6 +107,55 @@ public final class AaTurnsTest {
         expect("roundabout, exit at 100 degrees", "road [Circle]", "tbt 99 65535 90.0 -1.0 0 0 0 254 -2", "hud f201630000" + utf16("Circle"));
         d.nextTurn("Old Rd", 0, 11, 0, 0);
         expect("roundabout enter: not for the cluster");
+        final int UNSPECIFIED = 3;
+        d.nextTurn("Old Rd", UNSPECIFIED, 12, -1, 0);
+        expect("in the roundabout (exit, no side, no angle): its exit stays on, not 64 (the cluster's spinner)",
+                "road [Old Rd]", "tbt 99 65535 90.0 -1.0 0 0 0 254 -2", "hud f201630000" + utf16("Old Rd"));
+        d.nextTurn("Pine St", RIGHT, TURN, -1, 0);
+        expect("after the roundabout: the next turn", "road [Pine St]", "tbt 67 65535 90.0 -1.0 0 0 0 254 -2", "hud f201430000" + utf16("Pine St"));
+        d.nextTurn("Ring Rd", UNSPECIFIED, 12, -1, 0);
+        expect("roundabout exit with no roundabout before it: straight (65), not 64",
+                "road [Ring Rd]", "tbt 65 65535 0.0 -1.0 0 0 0 254 -2", "hud f201410000" + utf16("Ring Rd"));
+        d.nextTurn("Loop", RIGHT, 13, -1, 0);
+        expect("roundabout with no angle: straight (65), not 64",
+                "road [Loop]", "tbt 65 65535 0.0 -1.0 0 0 0 254 -2", "hud f201410000" + utf16("Loop"));
+        d.nextTurn("Circle Dr", RIGHT, 64, 100, 13 | 2 << 8);
+        d.nextTurnDistance(800, 0, 500, MILES | 0x200);
+        d.nextTurn(null, 0, 67, 0, 1);
+        expect("a roundabout in the turns ahead: its exit icon and direction (99, 90), not 64 and the raw angle",
+                "list {1 99 90 [Circle Dr] [2] " + (800 / 1609f) + " 2}");
+        d.nextTurn("Hill Rd", RIGHT, 13, 300, 0);
+        expect("roundabout, exit at 225: 104 (the car's own icon), not 103",
+                "road [Hill Rd]", "tbt 104 65535 225.0 -1.0 0 0 0 254 -2", "hud f201680000" + utf16("Hill Rd"));
+        d.nextTurn("Lake Rd", RIGHT, 13, 200, 0);
+        expect("roundabout, exit at 315: 107 (the car's own icon), not 106",
+                "road [Lake Rd]", "tbt 107 65535 315.0 -1.0 0 0 0 254 -2", "hud f2016b0000" + utf16("Lake Rd"));
+        d.nextTurn("Ash St", UNSPECIFIED, TURN, -1, 0);
+        expect("turn with no side: straight (65), not 64 (the cluster's spinner)",
+                "road [Ash St]", "tbt 65 65535 0.0 -1.0 0 0 0 254 -2", "hud f201410000" + utf16("Ash St"));
+        d.nextTurn("Somewhere", 0, 0, -1, 0);
+        expect("unknown maneuver: straight (65), not 64",
+                "tbt 65 65535 0.0 -1.0 0 0 0 254 -2", "hud f201410000" + utf16("Somewhere"));
+        d.nextTurn("Oak Rd", RIGHT, TURN, -1, 0);
+        expect("a right turn before the fork", "road [Oak Rd]", "tbt 67 65535 90.0 -1.0 0 0 0 254 -2", "hud f201430000" + utf16("Oak Rd"));
+        d.nextTurn("Split", UNSPECIFIED, 9, -1, 0);
+        expect("fork with no side: the plain fork (172), not the last turn's arrow",
+                "road [Split]", "tbt 172 65535 0.0 -1.0 0 0 0 254 -2", "hud f201ac0000" + utf16("Split"));
+        d.nextTurn("Exit 5", RIGHT, 64, -1, 8 | 255 << 8);
+        d.nextTurn("Y", UNSPECIFIED, 65, -1, 9 | 255 << 8);
+        d.nextTurn("Home", RIGHT, 66, -1, 19 | 255 << 8);
+        d.nextTurnDistance(800, 0, 500, MILES | 0x200);
+        d.nextTurnDistance(1600, 0, 1000, MILES | 0x200 | 1 << 10);
+        d.nextTurnDistance(3200, 0, 2000, MILES | 0x200 | 2 << 10);
+        d.nextTurn(null, 0, 67, 0, 3);
+        expect("turns ahead: exit right 81, fork with no side 172, destination on the right 113 (none 64)",
+                "list {1 81 0 [Exit 5] [] " + (800 / 1609f) + " 2} {2 172 0 [Y] [] " + (1600 / 1609f) + " 2} {3 113 0 [Home] [] "
+                        + (3200 / 1609f) + " 2}");
+        check("turns ahead: unknown, merge, depart: straight (65)",
+                AaTurns.aheadType(0, 0, -1) == 65 && AaTurns.aheadType(10, 0, -1) == 65 && AaTurns.aheadType(1, 0, -1) == 65);
+        check("turns ahead: on-ramp right 173, left 174; ferry 176; name change left 70",
+                AaTurns.aheadType(7, RIGHT, -1) == 173 && AaTurns.aheadType(7, LEFT, -1) == 174
+                        && AaTurns.aheadType(16, 0, -1) == 176 && AaTurns.aheadType(2, LEFT, -1) == 70);
         d.stop();
         d.end();
         expect("connection ends during a route: cleared", "dest 0 []", "tbt 0 0 0.0 0.0 -1 0 0 0 -1",
@@ -148,7 +197,8 @@ public final class AaTurnsTest {
         stdCase("roundabout, left-hand traffic: 33", RB_EXIT, LEFT, 33, 0, 200, "33 0 40");
         stdCase("on-ramp: the icon, with the bar", ON_RAMP, RIGHT, 173, 30, 200, "173 30 40");
         stdCase("ferry: the icon, with the bar", FERRY, 0, 176, 0, 200, "176 0 40");
-        stdCase("turn without a side: the icon, with the bar", TURN, 0, 64, 0, 200, "64 0 40");
+        stdCase("turn without a side: the icon (straight), with the bar", TURN, 0, 65, 0, 200, "65 0 40");
+        stdCase("fork without a side: the icon (172), with the bar", FORK, 0, 172, 0, 200, "172 0 40");
         stdCase("destination on the right: 113, no bar", DEST, RIGHT, 3, 0, 100, "113 0 0");
         stdCase("destination on the left: 114", DEST, LEFT, 3, 0, 100, "114 0 0");
         stdCase("destination ahead: 112, also far out", DEST, 0, 3, 0, 5000, "112 0 0");
