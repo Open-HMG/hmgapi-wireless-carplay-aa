@@ -50,11 +50,13 @@ final class CpTurns {
     /** the main turn on the cluster: component, maneuver index, its type and icon (shownIcon 0: nothing of ours shown) */
     int shownId, shownIndex, shownType, shownIcon;
     /**
-     * setting tbt_no_icon, for a maneuver with no arrow in the table and no plain direction:
-     * "clear" takes ours off the cluster (default), "skip" sends nothing (2.1.0: the last
-     * turn's arrow stays up), "no_info" sends icon 1 (2.1.1-nlw.1; a spinner on a US EV6)
+     * setting tbt_no_icon, for a maneuver with no arrow at all (the departure, or a type
+     * Apple adds later): "straight" sends a straight arrow with the distance (default),
+     * "clear" takes ours off the cluster, "skip" sends nothing (2.1.0: the last turn's arrow
+     * stays up), "no_info" sends icon 1. A cleared turn and icon 1 both draw the cluster's
+     * spinner while guidance is on (US EV6, 2026-11-08), and clearing also takes the distance.
      */
-    String noIcon = "clear";
+    String noIcon = "straight";
 
     CpTurns(Context context, Cluster cluster, Runnable restart) {
         this.context = context;
@@ -339,14 +341,17 @@ final class CpTurns {
                 icon = shownIcon;
                 how = "kept";
             } else {
-                // geometry the table doesn't have: a plain direction, else no arrow, never the last turn's
-                icon = aheadIcon(x.type, x.side, x.junction, x.exit);
-                how = "direction";
+                // geometry the table doesn't have: the nearest icon the car has, never the last turn's
+                icon = fallback(x.type, x.side, x.junction, x.exit);
+                how = "nearest";
             }
         }
-        // no arrow (the table's NO_INFO, as StartRoute, or no plain direction): setting tbt_no_icon
-        if (icon == 64 || icon == NO_INFO) {
-            if ("no_info".equals(noIcon)) {
+        // no arrow at all (the table's NO_INFO for StartRoute, or an unknown type): setting tbt_no_icon
+        if (icon == 0 || icon == NO_INFO) {
+            if ("straight".equals(noIcon)) {
+                icon = 65;
+                how = "straight";
+            } else if ("no_info".equals(noIcon)) {
                 icon = NO_INFO;
                 if (!how.equals("table")) how = "no_info";
             } else {
@@ -460,23 +465,74 @@ final class CpTurns {
         }
     }
 
-    /** an upcoming turn's small icon (HUD list and turn list): 64 none, 65 straight, 66-68 right, 69-71 left, 72/73 U-turn */
+    /**
+     * An upcoming turn's icon (HUD list and the turns ahead): the table's, else the nearest
+     * (fallback), else straight (65). Never 64: the cluster draws its spinner for it, and far
+     * from a turn it draws its card from the turns ahead.
+     */
     static int aheadIcon(int type, int side, int junction, int exit) {
-        if (type == 1) {
-            if (exit == -120 && junction == 0) return 69;
-            if (exit == -90 && side == 0 && junction == 0) return 70;
-            if (exit == -60 && junction == 0) return 71;
-            return 70;
+        int t = icon(type, side, junction, exit, 0);
+        if (t >= 64) return t;
+        t = fallback(type, side, junction, exit);
+        return t != 0 ? t : 65;
+    }
+
+    /**
+     * The nearest icon the car has for a maneuver the table doesn't match (iAP2 ManeuverType,
+     * as CarPlay's CPManeuverType), the same icons Android Auto's turns use: highway exits
+     * 81/82 (86 with no side), on-ramps and highway changes 172-174, keep left/right as the
+     * forks 174/173, roundabouts by the exit's angle. 0: nothing to show (the departure, a type
+     * this doesn't know), for setting tbt_no_icon.
+     */
+    static int fallback(int type, int side, int junction, int exit) {
+        if (isRoundabout(type) || junction == 1) {
+            if (exit == 0 && (type == 1 || type == 20)) return 105;   // left at a roundabout, no angle
+            if (exit == 0 && (type == 2 || type == 21)) return 99;
+            return roundabout(type == 19 ? 180 : exit);
         }
-        if (type == 2) {
-            if (exit == 60 && junction == 0) return 66;
-            if (exit == 90 && side == 0 && junction == 0) return 67;
-            if (exit == 120 && junction == 0) return 68;
-            return 67;
+        switch (type) {
+            case 0: case 3: case 5: return 65;        // no turn, straight ahead, follow the road
+            case 1: case 20:                          // left turn (at the end of the road)
+                if (exit <= -105) return 69;
+                if (exit < -75 || exit == 0) return 70;
+                return 71;
+            case 2: case 21:
+                if (exit >= 105) return 68;
+                if (exit > 75 || exit == 0) return 67;
+                return 66;
+            case 47: return 69;                       // sharp left/right, slight left/right
+            case 48: return 68;
+            case 49: return 71;
+            case 50: return 66;
+            case 4: case 18: case 26: return side == 1 ? 73 : 72;   // U-turns
+            case 8: return 86;                        // off ramp, no side
+            case 22: return 82;                       // highway off ramp left/right
+            case 23: return 81;
+            case 9: case 51: return 172;              // on ramp, change highway
+            case 13: case 52: return 174;             // keep left, change highway left
+            case 14: case 53: return 173;
+            case 15: case 16: case 17: return 176;    // ferries
+            case 10: case 12: case 27: return 112;    // end of navigation, arrive
+            case 24: return 114;
+            case 25: return 113;
+            default: return 0;                        // 11 (departure) and anything new
         }
-        if (type == 3) return 65;
-        if (type == 4) return side == 0 ? 72 : 73;
-        return 64;
+    }
+
+    /** enter/exit roundabout, U-turn at a roundabout, roundabout exits 1-19 */
+    static boolean isRoundabout(int type) {
+        return type == 6 || type == 7 || type == 19 || (type >= 28 && type <= 46);
+    }
+
+    /**
+     * A roundabout exit's icon from CarPlay's exit angle (degrees, negative to the left, 0
+     * straight on): the nearest of the car navigation's own eight, as Android Auto's
+     * (96 straight, 97, 99 right, 100, 102 back, 104, 105 left, 107). Never 103 or 106.
+     */
+    static int roundabout(int exit) {
+        int d = ((exit % 360) + 360) % 360;
+        int[] icons = {96, 97, 99, 100, 102, 104, 105, 107};
+        return icons[((d + 22) / 45) % 8];
     }
 
     /** the HUD's list frame (0xF2): count, this icon, the next turn's icon, 0, road after this turn (UTF-16LE) */

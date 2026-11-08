@@ -11,11 +11,15 @@
     {
       "key": "tbt_no_icon",
       "type": "choice",
-      "default": "clear",
+      "default": "straight",
       "title": "CarPlay turns with no arrow",
       "apply": "restart",
-      "description": "A maneuver the cluster has no arrow for (an exit or a merge with no direction, say).",
+      "description": "A maneuver the cluster has no icon for, after the nearest one is tried (the start of a route, say). Clearing the turn or an empty turn shows the cluster's spinner and hides the distance.",
       "options": [
+        {
+          "value": "straight",
+          "title": "Straight arrow with the distance"
+        },
         {
           "value": "clear",
           "title": "Clear the turn from the cluster"

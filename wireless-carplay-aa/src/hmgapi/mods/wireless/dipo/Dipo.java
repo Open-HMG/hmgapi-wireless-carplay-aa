@@ -144,7 +144,7 @@ public final class Dipo {
                 restartRouteGuidance();
             }
         });
-        turns.noIcon = mod.settingString("tbt_no_icon", "clear");
+        turns.noIcon = mod.settingString("tbt_no_icon", "straight");
         rg = new RgListener();
         mod.hook(app.classLoader, "dipo.iap2_proxy.stop_route_guidance", new MethodHook() {
             @Override

@@ -112,18 +112,57 @@ public final class CpTurnsTest {
         expect("India route stop still clears HUD (and the cluster turn and trip, as any state 0)",
                 "tbt 0 0 0.0 0.0 -1 0 0 0 -1", "sub 0.0 -1 0 0 0 0 0 0.0 -1 0", "2c 0 0 0 0 0 0 0 0 0", "lanes f1", "hud f2", "hud f2");
 
-        // default "clear": a departure takes the last turn off the cluster and HUD, never icon 1
+        // "clear": a departure takes the last turn off the cluster and HUD, never icon 1
         // (a spinner that outlives the session on a US EV6's cluster)
         CpTurns d = new CpTurns(new android.content.Context(), c, null);
+        d.noIcon = "clear";
         d.maneuver(maneuver(0, 2, 1, 0, 90, "Test Road", 100));
         d.routeGuidance(msg(0, U16, i(1), 1, ENUM, i(1), 11, STR, s("100"), 12, ENUM, i(2), 13, U16, i(0)));
         c.calls.clear();
         d.maneuver(msg(0, U16, i(1), 1, U16, i(0), 3, ENUM, i(11)));
         d.routeGuidance(msg(0, U16, i(1)));
-        expect("departure, default clear: turn, trip and HUD cleared, no icon 1",
+        expect("departure, clear: turn, trip and HUD cleared, no icon 1",
                 "road [Test Road]", "tbt 0 0 0.0 0.0 -1 0 0 0 -1", "sub 0.0 -1 0 0 0 0 0 0.0 -1 0", "2c 0 0 0 0 0 0 0 0 0", "lanes f1", "hud f2", "hud f2");
         d.routeGuidance(msg(0, U16, i(1)));
         expect("departure again: nothing cleared twice", "road [Test Road]");
+
+        // default "straight": a departure shows a straight arrow with its distance, never icon 1
+        CpTurns e = new CpTurns(new android.content.Context(), c, null);
+        e.maneuver(maneuver(0, 11, 0, 0, 0, "Start Rd", 200));
+        c.calls.clear();
+        e.routeGuidance(msg(0, U16, i(1), 1, ENUM, i(1), 11, STR, s("0.2"), 12, ENUM, i(1), 13, U16, i(0)));
+        expect("departure, default straight: 65 with the distance",
+                "road [Start Rd]", "tbt 65 0 0.0 0.2 0 0 2 0 0", "hud f201410000" + utf16("Start Rd"), "2c 2 2 0 0 0 0 0 0 0");
+    }
+
+    /** the maneuvers a US EV6's iPhone sent on 2026-11-08 that had no arrow (Rt 2 W, I-95 S, rotaries) */
+    static void driveTurns() {
+        int[][] seen = {   // type, side, junction, exit, icon
+            {8, 0, 0, 0, 86}, {13, 0, 0, 0, 174}, {14, 0, 0, 0, 173},
+            {28, 0, 1, 61, 97}, {29, 0, 1, -54, 107}, {29, 0, 1, -61, 107}, {29, 0, 1, -8, 96}, {29, 0, 1, 16, 96},
+            {29, 0, 1, 2, 96}, {29, 0, 1, 8, 96}, {30, 0, 1, -127, 104},
+        };
+        for (int[] v : seen) {
+            int got = CpTurns.icon(v[0], v[1], v[2], v[3], 1);
+            if (got == 0) got = CpTurns.fallback(v[0], v[1], v[2], v[3]);
+            check("11-08 drive: type " + v[0] + " junction " + v[2] + " exit " + v[3] + " -> " + v[4] + " (got " + got + ")", got == v[4]);
+            check("11-08 drive, turns ahead: type " + v[0] + " exit " + v[3] + " -> " + v[4], CpTurns.aheadIcon(v[0], v[1], v[2], v[3]) == v[4]);
+        }
+        check("highway exits keep their side, ramps and highway changes their forks",
+                CpTurns.fallback(22, 0, 0, 30) == 82 && CpTurns.fallback(23, 0, 0, 30) == 81 && CpTurns.fallback(9, 0, 0, 20) == 172
+                        && CpTurns.fallback(52, 0, 0, -20) == 174 && CpTurns.fallback(53, 0, 0, 20) == 173 && CpTurns.fallback(51, 0, 0, 0) == 172);
+        check("roundabout exits: one icon per 45 degrees, never 103 or 106",
+                CpTurns.roundabout(0) == 96 && CpTurns.roundabout(45) == 97 && CpTurns.roundabout(90) == 99 && CpTurns.roundabout(135) == 100
+                        && CpTurns.roundabout(180) == 102 && CpTurns.roundabout(-135) == 104 && CpTurns.roundabout(-90) == 105
+                        && CpTurns.roundabout(-45) == 107 && CpTurns.roundabout(-180) == 102 && CpTurns.roundabout(22) == 96 && CpTurns.roundabout(23) == 97);
+        boolean never64 = true;
+        for (int type = 0; type <= 60; type++)
+            for (int j = 0; j <= 1; j++)
+                for (int x = -180; x <= 180; x += 15) {
+                    int a = CpTurns.aheadIcon(type, 0, j, x), f = CpTurns.fallback(type, 0, j, x);
+                    if (a == 64 || a < 64 || f == 64 || f == 103 || f == 106 || a == 103 || a == 106) never64 = false;
+                }
+        check("never 64 (the spinner), 103 or 106 anywhere, and the turns ahead always get an arrow", never64);
     }
 
     public static void main(String[] a) throws Exception {
@@ -248,16 +287,17 @@ public final class CpTurnsTest {
 
         // a fresh route: maneuvers the icon table doesn't have never leave the last turn's arrow up
         CpTurns g = new CpTurns(new android.content.Context(), c, null);
+        g.noIcon = "clear";
         g.maneuver(maneuver(0, RIGHT, 0, 0, 90, "First St", 100));
         g.maneuver(maneuver(1, LEFT, 0, 1, -45, "Circle", 400));
-        g.maneuver(maneuver(2, 47, 0, 0, 0, "Ramp", 900));
+        g.maneuver(maneuver(2, 99, 0, 0, 0, "Ramp", 900));
         g.routeGuidance(msg(0, U16, i(1), 1, ENUM, i(1), 11, STR, s("0.1"), 12, ENUM, i(MILES), 13, U16, i(0)));
         c.calls.clear();
         g.routeGuidance(msg(0, U16, i(1), 11, STR, s("0.3"), 13, U16, i(1)));
-        expect("next maneuver with no icon in the table (left, roundabout, -45): a plain left, not the last right",
-                "road [Circle]", "tbt 70 0 0.0 0.3 0 0 2 0 0", "hud f201460000" + utf16("Circle"), "2c 2 3 0 0 0 0 0 0 0");
+        expect("next maneuver with no icon in the table (left, roundabout, -45): the slight-left exit (107), not the last right",
+                "road [Circle]", "tbt 107 0 0.0 0.3 0 0 2 0 0", "hud f2016b0000" + utf16("Circle"), "2c 2 3 0 0 0 0 0 0 0");
         g.routeGuidance(msg(0, U16, i(1), 11, STR, s("0.5"), 13, U16, i(2)));
-        expect("next maneuver with no icon and no plain direction (type 47, angle 0): ours cleared off the cluster, HUD blanked",
+        expect("clear: a maneuver with no icon at all (an unknown type 99): ours cleared off the cluster, HUD blanked",
                 "road [Ramp]", "tbt 0 0 0.0 0.0 -1 0 0 0 -1", "sub 0.0 -1 0 0 0 0 0 0.0 -1 0", "2c 0 0 0 0 0 0 0 0 0", "lanes f1", "hud f2", "hud f2");
         g.routeGuidance(msg(0, U16, i(1), 11, STR, s("0.4"), 13, U16, i(2)));
         expect("still no arrow: nothing cleared again", "road [Ramp]");
@@ -271,17 +311,19 @@ public final class CpTurnsTest {
                 "2c 0 0 0 0 0 0 0 0 0", "lanes f1", "hud f2", "hud f2");
 
         // the other tbt_no_icon choices
-        for (String mode : new String[] {"skip", "no_info"}) {
+        for (String mode : new String[] {"skip", "no_info", "straight"}) {
             CpTurns h = new CpTurns(new android.content.Context(), c, null);
-            h.noIcon = mode;
+            if (!mode.equals("straight")) h.noIcon = mode;
             h.maneuver(maneuver(0, RIGHT, 0, 0, 90, "First St", 100));
-            h.maneuver(maneuver(1, 47, 0, 0, 0, "Ramp", 900));
+            h.maneuver(maneuver(1, 99, 0, 0, 0, "Ramp", 900));
             h.routeGuidance(msg(0, U16, i(1), 1, ENUM, i(1), 11, STR, s("0.1"), 12, ENUM, i(MILES), 13, U16, i(0)));
             c.calls.clear();
             h.routeGuidance(msg(0, U16, i(1), 11, STR, s("0.5"), 13, U16, i(1)));
             if (mode.equals("skip")) expect("skip (2.1.0): nothing sent, the last arrow stays", "road [Ramp]");
-            else expect("no_info (nlw.1): icon 1, HUD list blanked once",
+            else if (mode.equals("no_info")) expect("no_info (nlw.1): icon 1, HUD list blanked once",
                     "road [Ramp]", "2c 0 0 0 0 0 0 0 0 0", "lanes f1", "hud f2", "hud f2", "tbt 1 0 0.0 0.5 0 0 2 0 0", "2c 2 5 0 0 0 0 0 0 0");
+            else expect("straight (default): a straight arrow, the distance stays",
+                    "road [Ramp]", "tbt 65 0 0.0 0.5 0 0 2 0 0", "hud f201410000" + utf16("Ramp"), "2c 2 5 0 0 0 0 0 0 0");
         }
 
         check("icons: sharp left 69, slight right 66, roundabout exit 96/97, U-turn left-hand traffic 73",
@@ -292,6 +334,7 @@ public final class CpTurnsTest {
                 CpTurns.laneIcon(0) == 1 && CpTurns.laneIcon(90) == 3 && CpTurns.laneIcon(-45) == 8 && CpTurns.laneIcon(180) == 5
                         && CpTurns.laneIcon(270) == 7);
         indiaTurns();
+        driveTurns();
         System.exit(fail);
     }
 }
