@@ -46,6 +46,11 @@ final class AaTurns {
     static final int DEST_AHEAD = 112, DEST_RIGHT = 113, DEST_LEFT = 114;
     /** how far before a maneuver the car's navigation switches to its turn format and starts the bar (m) */
     static final int GUIDE_WINDOW = 457;
+    /** Android Auto's rerouting status; the cluster's "Recalculating..." type; how long a reroute runs before it shows */
+    static final int STATUS_REROUTING = 3, TYPE_RECALCULATING = 10;
+    static final long REROUTE_SHOW_MS = 1000;
+    /** the roundabout icons for clockwise (left-hand) traffic: the counterclockwise ones (96..107) + 96 */
+    static final int ROUNDABOUT_CW = 96;
 
     final Context context;
     final Cluster cluster;
@@ -69,6 +74,8 @@ final class AaTurns {
      * car is in it (with no side and no angle). -1: none.
      */
     int roundaboutType = -1, roundaboutDir;
+    /** a reroute is going on; "Recalculating..." is up (standard turns only) */
+    boolean rerouting, rerouteShown;
     /**
      * Setting tbt_standard (off by default): the next maneuver as the car's own navigation sends it
      * (standard(), from its cluster code: libExSLNavi, Navi::CLUSTER::Turn::CInformation,
@@ -138,6 +145,11 @@ final class AaTurns {
             aheadExit[k] = (number >> 8) & 0xff;
             aheadOk[k] = false;
             return;
+        }
+        if (rerouting) {   // the new route's first turn
+            rerouting = false;
+            rerouteShown = false;
+            handler.removeCallbacks(rerouteShow);
         }
         hudFresh = false;
         boolean first = road == null;
@@ -215,10 +227,18 @@ final class AaTurns {
     }
 
     void status(int s) {
-        if (s == 1 || s == 3) {   // active, rerouting
+        if (s == 1 || s == STATUS_REROUTING) {   // active, rerouting
             navLive = true;
+            if (s == STATUS_REROUTING) {
+                reroute();
+            } else if (rerouting) {
+                endReroute();
+            }
             return;
         }
+        rerouting = false;
+        rerouteShown = false;
+        handler.removeCallbacks(rerouteShow);
         handler.removeCallbacks(tick);
         destName = null;
         navLive = false;
@@ -227,6 +247,37 @@ final class AaTurns {
         estPoint = 0;
         roundaboutType = -1;
         release();
+    }
+
+    /**
+     * Android Auto is rerouting (status 3). With standard turns, a reroute still going after
+     * REROUTE_SHOW_MS shows the cluster's "Recalculating..." (type 10), as on the Creta
+     * Electric (sirishant/HMG-API, docs/creta/cluster-turn-by-turn.md), until the new route's
+     * first turn or the end of the reroute. A short one leaves the turn as it is.
+     */
+    void reroute() {
+        if (!standardTurns || rerouting) return;
+        rerouting = true;
+        handler.removeCallbacks(rerouteShow);
+        handler.postDelayed(rerouteShow, REROUTE_SHOW_MS);
+    }
+
+    final Runnable rerouteShow = new Runnable() {
+        @Override
+        public void run() {
+            if (!rerouting || !navLive) return;
+            rerouteShown = true;
+            cluster.tbtInfo(TYPE_RECALCULATING, 65535, 0f, 0f, -3, 0, 15, 0, -1);
+        }
+    };
+
+    /** The reroute is over: the turn goes back up if "Recalculating..." replaced it. */
+    void endReroute() {
+        boolean shown = rerouteShown;
+        rerouting = false;
+        rerouteShown = false;
+        handler.removeCallbacks(rerouteShow);
+        if (shown && road != null) sendTurn();
     }
 
     /** The car's navigation took over (focus native): forget the turn. */
@@ -241,6 +292,9 @@ final class AaTurns {
         displayType = 0;
         direction = 0;
         roundaboutType = -1;
+        rerouting = false;
+        rerouteShown = false;
+        handler.removeCallbacks(rerouteShow);
     }
 
     /** The connection ended: clear what we showed, if a route was on. */
@@ -252,7 +306,7 @@ final class AaTurns {
     // ---- the next turn
 
     void sendTurn() {
-        if (!navLive) return;
+        if (!navLive || rerouteShown) return;   // "Recalculating..." stays until the new route's turn
         int type = displayType, dir = direction, bar = 32, barErr = 0, sides = 65535;
         if (distance < 0f) {
             bar = 254;
@@ -315,8 +369,9 @@ final class AaTurns {
                 if (r || l) return new int[] { r ? TYPE_EXIT_RIGHT : TYPE_EXIT_LEFT, r ? 90 : 270, bar };
                 break;
             case ROUNDABOUT_EXIT: case ROUNDABOUT_ENTER_AND_EXIT:
-                // the exit's direction; 32 for right-hand traffic, 33 left (the car: its drive side)
-                return new int[] { l ? TYPE_ROUNDABOUT_LEFT : TYPE_ROUNDABOUT_RIGHT, iconDir, bar };
+                // the exit's direction; 32 for right-hand traffic, 33 left (the car: its drive side;
+                // inside a clockwise roundabout Android Auto's exit has no side, its icon says it)
+                return new int[] { l || clockwiseIcon(icon) ? TYPE_ROUNDABOUT_LEFT : TYPE_ROUNDABOUT_RIGHT, iconDir, bar };
             default:
                 break;
         }
@@ -454,7 +509,8 @@ final class AaTurns {
     }
 
     /**
-     * Roundabouts: the exit's angle picks the icon (the cluster draws them for right-hand traffic).
+     * Roundabouts: the exit's angle picks the icon, from the clockwise set when Android Auto marks
+     * the roundabout LEFT (left-hand traffic).
      * Once the car is in the roundabout, Android Auto sends ROUNDABOUT_EXIT, usually with no side
      * and no angle: the exit its ROUNDABOUT_ENTER_AND_EXIT gave stays on until the next
      * maneuver. Never type 64 ("no direction"): the cluster draws its loading spinner for it, in
@@ -470,13 +526,13 @@ final class AaTurns {
                 displayType = roundaboutType;
                 direction = roundaboutDir;
             } else {
-                int[] r = roundabout(a);
+                int[] r = roundabout(a, side == LEFT);
                 displayType = r[0];
                 direction = r[1];
             }
             return;
         }
-        int[] r = roundabout(a);
+        int[] r = roundabout(a, side == LEFT);
         displayType = r[0];
         direction = r[1];
         roundaboutType = r[0] == 65 ? -1 : r[0];
@@ -499,6 +555,23 @@ final class AaTurns {
         if (a > 225 && a <= 270) return new int[] { 105, 270 };
         if (a > 180 && a <= 225) return new int[] { 107, 315 };
         return new int[] { 65, 0 };
+    }
+
+    /**
+     * The same for a roundabout Android Auto marks clockwise (side LEFT: left-hand traffic).
+     * The car's clockwise icons are its counterclockwise ones + 96 (0xc0..0xcb: its navigation
+     * pairs 96/192 ... 107/203), and the direction is mirrored (360 - it), as measured on the
+     * left-hand traffic Creta Electric (sirishant/HMG-API, docs/creta/cluster-turn-by-turn.md).
+     * Its 315 degree exit, 0xcb, is there too; 0xca drew the spinner.
+     */
+    static int[] roundabout(int a, boolean clockwise) {
+        int[] r = roundabout(a);
+        if (!clockwise || r[0] == 65) return r;
+        return new int[] { r[0] + ROUNDABOUT_CW, (360 - r[1]) % 360 };
+    }
+
+    static boolean clockwiseIcon(int type) {
+        return type >= 96 + ROUNDABOUT_CW && type <= 107 + ROUNDABOUT_CW;
     }
 
     // ---- HUD
@@ -624,7 +697,7 @@ final class AaTurns {
     static int aheadType(int ev, int side, int angle) {
         boolean r = side == RIGHT, l = side == LEFT;
         switch (ev) {
-            case ROUNDABOUT_ENTER: case ROUNDABOUT_EXIT: case ROUNDABOUT_ENTER_AND_EXIT: return roundabout(angle)[0];
+            case ROUNDABOUT_ENTER: case ROUNDABOUT_EXIT: case ROUNDABOUT_ENTER_AND_EXIT: return roundabout(angle, l)[0];
             case SLIGHT_TURN: return r ? 66 : l ? 71 : 65;
             case TURN: case NAME_CHANGE: return r ? 67 : l ? 70 : 65;
             case SHARP_TURN: return r ? 68 : l ? 69 : 65;
@@ -652,7 +725,7 @@ final class AaTurns {
             if (!aheadOk[k]) continue;
             Cluster.Turn t = new Cluster.Turn();
             t.type = aheadType(aheadEv[k], aheadSide[k], aheadAng[k]);
-            t.direction = isRoundabout(aheadEv[k]) ? roundabout(aheadAng[k])[1] : Math.max(aheadAng[k], 0);
+            t.direction = isRoundabout(aheadEv[k]) ? roundabout(aheadAng[k], aheadSide[k] == LEFT)[1] : Math.max(aheadAng[k], 0);
             t.traffic = 0;
             t.no = i + 1;
             t.name = aheadName[k] == null ? "" : aheadName[k];

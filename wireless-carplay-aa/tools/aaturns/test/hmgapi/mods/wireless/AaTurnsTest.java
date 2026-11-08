@@ -206,6 +206,63 @@ public final class AaTurnsTest {
         stdCase("457 m: in, bar 90", TURN, RIGHT, 67, 90, 457, "13 90 90");
         stdCase("458 m: out, the icon, bar off", TURN, RIGHT, 67, 90, 458, "67 90 0");
         stdCase("no distance yet: the icon, bar off", TURN, RIGHT, 67, 90, -1, "67 90 0");
+
+        // left-hand traffic: roundabouts Android Auto marks LEFT (clockwise)
+        AaTurns lh = new AaTurns(new android.content.Context(), c, new Handler());
+        lh.status(1);
+        lh.nextTurn("Start Rd", 0, 1, 0, 0);
+        c.calls.clear();
+        lh.nextTurn("Ring", LEFT, RB_BOTH, 100, 0);
+        expect("clockwise roundabout, exit at 90: 0xc3 (195), direction mirrored (270)",
+                "road [Ring]", "tbt 195 65535 270.0 -1.0 0 0 0 254 -2", "hud f201c30000" + utf16("Ring"));
+        lh.nextTurn("Mill Rd", UNSPECIFIED, RB_EXIT, -1, 0);
+        expect("in the clockwise roundabout: its exit stays on",
+                "road [Mill Rd]", "tbt 195 65535 270.0 -1.0 0 0 0 254 -2", "hud f201c30000" + utf16("Mill Rd"));
+        lh.nextTurn("Bay Rd", LEFT, RB_BOTH, 200, 0);
+        expect("clockwise roundabout, exit at 315: 0xcb (203), not 0xca (the spinner); direction 45",
+                "road [Bay Rd]", "tbt 203 65535 45.0 -1.0 0 0 0 254 -2", "hud f201cb0000" + utf16("Bay Rd"));
+        check("clockwise roundabout: straight on 192 (0), 225 0xc8 (135), no angle straight (65)",
+                java.util.Arrays.equals(AaTurns.roundabout(180, true), new int[] { 192, 0 })
+                        && java.util.Arrays.equals(AaTurns.roundabout(300, true), new int[] { 200, 135 })
+                        && java.util.Arrays.equals(AaTurns.roundabout(-1, true), new int[] { 65, 0 }));
+        check("turns ahead: a clockwise roundabout gets its clockwise icon",
+                AaTurns.aheadType(RB_BOTH, LEFT, 100) == 195 && AaTurns.aheadType(RB_BOTH, RIGHT, 100) == 99);
+        stdCase("inside a clockwise roundabout (no side): 33, from its icon", RB_EXIT, 0, 195, 270, 200, "33 270 40");
+        stdCase("inside a counterclockwise one: 32", RB_EXIT, 0, 99, 90, 200, "32 90 40");
+
+        // rerouting (status 3): "Recalculating..." (10) with standard turns, after 1 s
+        Handler rh = new Handler();
+        AaTurns rr = new AaTurns(new android.content.Context(), c, rh);
+        rr.standardTurns = true;
+        rr.status(1);
+        rr.nextTurn("Elm St", RIGHT, TURN, -1, 0);
+        c.calls.clear();
+        rr.status(3);
+        expect("reroute: nothing at once");
+        check("reroute: Recalculating waits 1 s", rh.delayed == rr.rerouteShow);
+        rr.status(1);
+        check("a short reroute: nothing shown, the wait cancelled", rh.delayed == null && c.calls.isEmpty());
+        rr.status(3);
+        rh.delayed.run();
+        expect("reroute over 1 s: Recalculating (10)", "tbt 10 65535 0.0 0.0 -3 0 15 0 -1");
+        rr.nextTurnDistance(300, 20, 186, MILES_P1);
+        expect("a distance during the reroute: Recalculating stays");
+        rh.delayed = null;   // the stand-in keeps a run runnable
+        rr.status(3);
+        check("rerouting again while it shows: no second wait", rh.delayed == null);
+        rr.nextTurn("Oak Ave", LEFT, TURN, -1, 0);
+        expect("the new route's first turn replaces it", "road [Oak Ave]", "tbt 13 0 270.0 0.186 0 0 2 60 0",
+                "hud f201460000" + utf16("Oak Ave"), "2c 2 2 0 0 0 0 0 0 0");
+        rr.status(3);
+        rh.delayed.run();
+        c.calls.clear();
+        rr.status(1);
+        expect("reroute over with the same route: the turn comes back", "tbt 13 0 270.0 0.186 0 0 2 60 0", "2c 2 2 0 0 0 0 0 0 0");
+        Handler oh = new Handler();
+        AaTurns off = new AaTurns(new android.content.Context(), c, oh);
+        off.status(1);
+        off.status(3);
+        check("standard turns off: no Recalculating", oh.delayed == null);
         System.exit(fail);
     }
 

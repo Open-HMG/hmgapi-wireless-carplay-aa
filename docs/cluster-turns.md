@@ -65,6 +65,23 @@ left-hand traffic twin (0xca) draws the loading spinner, so the mod doesn't send
 Roundabouts in the turns ahead get the same icons, with the cluster's direction rather than
 Android Auto's angle.
 
+**Left-hand traffic.** A roundabout Android Auto marks LEFT goes clockwise. It gets the
+car's clockwise icons, the counterclockwise ones + 96: 192, 193, 195, 196, 198, 200, 201,
+203 (0xc0 to 0xcb; the car's navigation pairs them the same way). Its direction is mirrored
+(360 minus it), and its near view in the car's own format is 33 instead of 32. Inside the
+roundabout, where Android Auto's exit has no side, the kept icon says which way it goes.
+That is what the right-hand-drive Creta Electric's own navigation sends in India, where
+0xca (the twin of 106) drew the spinner and 0xcb is its 315 degree exit. Not yet checked on
+a left-hand traffic Ioniq 5 or EV6.
+
+## Rerouting
+
+Android Auto reports a reroute as status 3. With the car's own format on (`tbt_standard`),
+a reroute still going after 1 second shows the cluster's "Recalculating..." (type 10), as on
+the Creta Electric, until the new route's first turn, or the turn it had when Android Auto
+goes back to guiding on the same route. Distances for the old turn don't replace it. A
+shorter reroute leaves the turn as it is. Not yet checked on an Ioniq 5 or EV6 cluster.
+
 ## Never 64
 
 The mod never sends 64 (0x40, "no direction"). The cluster draws its loading spinner for
