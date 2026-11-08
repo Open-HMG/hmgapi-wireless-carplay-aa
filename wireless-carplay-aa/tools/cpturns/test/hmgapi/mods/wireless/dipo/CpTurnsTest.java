@@ -107,7 +107,8 @@ public final class CpTurnsTest {
                 "road [Test Road]", "tbt 67 0 0.0 100.0 0 0 0 0 0",
                 "hud f201430000" + utf16("Test Road"), "2c 0 0 100 0 0 0 0 0 0");
         t.routeGuidance(msg(0, U16, i(1), 1, ENUM, i(0)));
-        expect("India route stop still clears HUD", "2c 0 0 0 0 0 0 0 0 0", "lanes f1", "hud f2", "hud f2");
+        expect("India route stop still clears HUD (and the cluster turn and trip, as any state 0)",
+                "tbt 0 0 0.0 0.0 -1 0 0 0 -1", "sub 0.0 -1 0 0 0 0 0 0.0 -1 0", "2c 0 0 0 0 0 0 0 0 0", "lanes f1", "hud f2", "hud f2");
     }
 
     public static void main(String[] a) throws Exception {
@@ -160,7 +161,7 @@ public final class CpTurnsTest {
 
         t.maneuver(msg(0, U16, i(1), 1, U16, i(0), 5, U32, i(250)));
         t.routeGuidance(msg(0, U16, i(1), 11, STR, s("0.1"), 12, ENUM, i(MILES)));
-        expect("maneuver update without optional angle retains its explicit right-turn direction",
+        expect("maneuver update without its exit angle (DiPO resets it): the same maneuver keeps its arrow, distance updated",
                 "road [Main St]", "tbt 67 0 0.0 0.1 0 0 2 0 0", "2c 2 1 0 0 0 0 0 0 0", "sub 0.4 0 2 22 13 1 1 0.0 -1 0",
                 "list {1 70 0 [Oak Ave] [] " + (800 / 1609f) + " 2} {2 72 0 [Pine St] [] " + (2000 / 1609f) + " 2}");
         t.maneuver(maneuver(0, RIGHT, 0, 0, 90, "Main St", 250));
@@ -185,7 +186,8 @@ public final class CpTurnsTest {
 
         t.routeGuidance(msg(0, U16, i(1), 19, STR, s("Waze"), 5, U64, l(0)));
         check("source change: route guidance restarted", restarted.await(2, TimeUnit.SECONDS));
-        expect("source change (Maps to Waze): HUD cleared; the reset state is 0 until the phone resends it, so cleared again",
+        expect("source change (Maps to Waze): cluster turn and HUD cleared; the reset state is 0 until the phone resends it, so the HUD again",
+                "tbt 0 0 0.0 0.0 -1 0 0 0 -1", "sub 0.0 -1 0 0 0 0 0 0.0 -1 0",
                 "2c 0 0 0 0 0 0 0 0 0", "lanes f1", "hud f2", "hud f2", "2c 0 0 0 0 0 0 0 0 0", "lanes f1", "hud f2", "hud f2");
 
         t.maneuver(maneuver(5, ARRIVE, 0, 0, 0, "Home Rd", 100));
@@ -195,10 +197,12 @@ public final class CpTurnsTest {
                 "2c 3 0 300 0 0 0 0 0 0");
 
         t.routeGuidance(msg(0, U16, i(1), 1, ENUM, i(2)));
-        expect("arrived (state 2): icon 3, no HUD list for it", "road [Home Rd]", "tbt 3 0 0.0 300.0 0 0 3 0 0", "2c 3 0 300 0 0 0 0 0 0");
+        expect("arrived (state 2): icon 3, no HUD list for it, so the last turn's list is blanked",
+                "road [Home Rd]", "2c 0 0 0 0 0 0 0 0 0", "lanes f1", "hud f2", "hud f2", "tbt 3 0 0.0 300.0 0 0 3 0 0", "2c 3 0 300 0 0 0 0 0 0");
 
         t.routeGuidance(msg(0, U16, i(1), 1, ENUM, i(0)));
-        expect("state 0: HUD cleared", "2c 0 0 0 0 0 0 0 0 0", "lanes f1", "hud f2", "hud f2");
+        expect("state 0: cluster turn, trip and HUD cleared", "tbt 0 0 0.0 0.0 -1 0 0 0 -1", "sub 0.0 -1 0 0 0 0 0 0.0 -1 0",
+                "2c 0 0 0 0 0 0 0 0 0", "lanes f1", "hud f2", "hud f2");
 
         t.routeGuidance(msg(0, U16, i(1), 1, ENUM, i(1)));
         t.stop();
@@ -224,8 +228,46 @@ public final class CpTurnsTest {
                 "road [Any Rd]", "tbt 65 0 0.0 0.4 0 0 2 0 0", "2c 2 4 0 0 0 0 0 0 0");
 
         t.routeGuidance(msg(0, U16, i(0), 1, ENUM, i(1), 11, STR, s("0.4"), 13, U16, i(0)));
-        expect("component 0's first update: DiPO starts it empty (state 0), so the HUD is cleared",
+        expect("component 0's first update: DiPO starts it empty (state 0), so the cluster turn and HUD are cleared",
+                "tbt 0 0 0.0 0.0 -1 0 0 0 -1", "sub 0.0 -1 0 0 0 0 0 0.0 -1 0", "2c 0 0 0 0 0 0 0 0 0", "lanes f1", "hud f2", "hud f2");
+
+        // a fresh route: maneuvers the icon table doesn't have never leave the last turn's arrow up
+        CpTurns g = new CpTurns(new android.content.Context(), c, null);
+        g.maneuver(maneuver(0, RIGHT, 0, 0, 90, "First St", 100));
+        g.maneuver(maneuver(1, LEFT, 0, 1, -45, "Circle", 400));
+        g.maneuver(maneuver(2, 47, 0, 0, 0, "Ramp", 900));
+        g.routeGuidance(msg(0, U16, i(1), 1, ENUM, i(1), 11, STR, s("0.1"), 12, ENUM, i(MILES), 13, U16, i(0)));
+        c.calls.clear();
+        g.routeGuidance(msg(0, U16, i(1), 11, STR, s("0.3"), 13, U16, i(1)));
+        expect("next maneuver with no icon in the table (left, roundabout, -45): a plain left, not the last right",
+                "road [Circle]", "tbt 70 0 0.0 0.3 0 0 2 0 0", "hud f201460000" + utf16("Circle"), "2c 2 3 0 0 0 0 0 0 0");
+        g.routeGuidance(msg(0, U16, i(1), 11, STR, s("0.5"), 13, U16, i(2)));
+        expect("next maneuver with no icon and no plain direction (type 47, angle 0): ours cleared off the cluster, HUD blanked",
+                "road [Ramp]", "tbt 0 0 0.0 0.0 -1 0 0 0 -1", "sub 0.0 -1 0 0 0 0 0 0.0 -1 0", "2c 0 0 0 0 0 0 0 0 0", "lanes f1", "hud f2", "hud f2");
+        g.routeGuidance(msg(0, U16, i(1), 11, STR, s("0.4"), 13, U16, i(2)));
+        expect("still no arrow: nothing cleared again", "road [Ramp]");
+        g.routeGuidance(msg(0, U16, i(1), 11, STR, s("0.2"), 13, U16, i(0)));
+        expect("a turn with an arrow after it: shown again", "road [First St]", "tbt 67 0 0.0 0.2 0 0 2 0 0", "hud f201430000" + utf16("First St"), "2c 2 2 0 0 0 0 0 0 0");
+        g.disconnected();
+        expect("session ended with a turn up: cluster turn, trip and HUD cleared",
+                "tbt 0 0 0.0 0.0 -1 0 0 0 -1", "sub 0.0 -1 0 0 0 0 0 0.0 -1 0", "2c 0 0 0 0 0 0 0 0 0", "lanes f1", "hud f2", "hud f2");
+        g.stop();
+        expect("stopped with nothing of ours up: the car's own turn is left alone (HUD only)",
                 "2c 0 0 0 0 0 0 0 0 0", "lanes f1", "hud f2", "hud f2");
+
+        // the other tbt_no_icon choices
+        for (String mode : new String[] {"skip", "no_info"}) {
+            CpTurns h = new CpTurns(new android.content.Context(), c, null);
+            h.noIcon = mode;
+            h.maneuver(maneuver(0, RIGHT, 0, 0, 90, "First St", 100));
+            h.maneuver(maneuver(1, 47, 0, 0, 0, "Ramp", 900));
+            h.routeGuidance(msg(0, U16, i(1), 1, ENUM, i(1), 11, STR, s("0.1"), 12, ENUM, i(MILES), 13, U16, i(0)));
+            c.calls.clear();
+            h.routeGuidance(msg(0, U16, i(1), 11, STR, s("0.5"), 13, U16, i(1)));
+            if (mode.equals("skip")) expect("skip (2.1.0): nothing sent, the last arrow stays", "road [Ramp]");
+            else expect("no_info (nlw.1): icon 1, HUD list blanked once",
+                    "road [Ramp]", "2c 0 0 0 0 0 0 0 0 0", "lanes f1", "hud f2", "hud f2", "tbt 1 0 0.0 0.5 0 0 2 0 0", "2c 2 5 0 0 0 0 0 0 0");
+        }
 
         check("icons: sharp left 69, slight right 66, roundabout exit 96/97, U-turn left-hand traffic 73",
                 CpTurns.icon(1, 0, 0, -120, 1) == 69 && CpTurns.icon(2, 0, 0, 60, 1) == 66 && CpTurns.icon(2, 0, 1, 0, 1) == 96
