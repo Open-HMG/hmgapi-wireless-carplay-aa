@@ -178,7 +178,8 @@ final class AaTurns {
                 displayType = 3;
                 break;
             case UNKNOWN:
-                displayType = 64;
+                displayType = 65;   // straight: 64 is the cluster's spinner
+                direction = 0;
                 break;
             default:
                 return;   // ROUNDABOUT_ENTER, FERRY_TRAIN: not for the cluster
@@ -402,7 +403,10 @@ final class AaTurns {
         }
     }
 
-    /** right type/direction, left type/direction, otherwise 64 (unknown) straight */
+    /**
+     * right type/direction, left type/direction, otherwise straight (65). Never 64 ("no
+     * direction"): the cluster draws its loading spinner for it.
+     */
     private void set(int side, int rType, int rDir, int lType, int lDir) {
         if (side == RIGHT) {
             displayType = rType;
@@ -411,7 +415,7 @@ final class AaTurns {
             displayType = lType;
             direction = lDir;
         } else {
-            displayType = 64;
+            displayType = 65;
             direction = 0;
         }
     }
@@ -440,8 +444,8 @@ final class AaTurns {
                 direction = 0;
             }
         } else if (ev == FORK) {
-            if (side == RIGHT) displayType = 173;
-            else if (side == LEFT) displayType = 174;
+            // no side: the plain one (otherwise the last maneuver's icon stayed on)
+            displayType = side == RIGHT ? 173 : side == LEFT ? 174 : 172;
             direction = 0;
         } else if (ev == FERRY_BOAT) {
             displayType = 176;
@@ -479,16 +483,21 @@ final class AaTurns {
         roundaboutDir = r[1];
     }
 
-    /** {icon, direction} for a roundabout exit at Android Auto's turn angle a; straight (65) without one. */
+    /**
+     * {icon, direction} for a roundabout exit at Android Auto's turn angle a; straight (65) without one.
+     * The icons are the ones the car's own navigation uses, one per 45 degrees: 96 97 99 100 102
+     * 104 105 107. Never 103 or 106: the car doesn't use them, and the Creta Electric's sweep saw
+     * 106's left-hand traffic twin (0xca) draw the loading spinner.
+     */
     static int[] roundabout(int a) {
         if (a == 180) return new int[] { 96, 0 };
         if (a >= 135 && a < 180) return new int[] { 97, 45 };
         if (a >= 90 && a < 135) return new int[] { 99, 90 };
         if (a >= 45 && a < 90) return new int[] { 100, 135 };
         if ((a >= 0 && a < 45) || (a > 315 && a <= 360)) return new int[] { 102, 180 };
-        if (a > 270 && a <= 315) return new int[] { 103, 225 };
+        if (a > 270 && a <= 315) return new int[] { 104, 225 };
         if (a > 225 && a <= 270) return new int[] { 105, 270 };
-        if (a > 180 && a <= 225) return new int[] { 106, 315 };
+        if (a > 180 && a <= 225) return new int[] { 107, 315 };
         return new int[] { 65, 0 };
     }
 
@@ -607,15 +616,24 @@ final class AaTurns {
 
     // ---- the turns ahead (cluster turn list)
 
+    /**
+     * A turn ahead's icon: the same as the next turn's (setTurnType, setRampType,
+     * setRoundaboutType), destinations as their icons, straight (65) for the rest. Never 64:
+     * the cluster draws its card from this list far from a turn, and 64 is its spinner.
+     */
     static int aheadType(int ev, int side, int angle) {
+        boolean r = side == RIGHT, l = side == LEFT;
         switch (ev) {
             case ROUNDABOUT_ENTER: case ROUNDABOUT_EXIT: case ROUNDABOUT_ENTER_AND_EXIT: return roundabout(angle)[0];
-            case STRAIGHT: case MERGE: return 65;
-            case SLIGHT_TURN: return side == RIGHT ? 66 : side == LEFT ? 71 : 64;
-            case TURN: return side == RIGHT ? 67 : side == LEFT ? 70 : 64;
-            case SHARP_TURN: return side == RIGHT ? 68 : side == LEFT ? 69 : 64;
-            case U_TURN: return side == RIGHT ? 73 : 72;
-            default: return 64;
+            case SLIGHT_TURN: return r ? 66 : l ? 71 : 65;
+            case TURN: case NAME_CHANGE: return r ? 67 : l ? 70 : 65;
+            case SHARP_TURN: return r ? 68 : l ? 69 : 65;
+            case U_TURN: return r ? 73 : 72;
+            case ON_RAMP: case FORK: return r ? 173 : l ? 174 : 172;
+            case OFF_RAMP: return r ? 81 : l ? 82 : 86;
+            case FERRY_BOAT: case FERRY_TRAIN: return 176;
+            case DESTINATION: return r ? DEST_RIGHT : l ? DEST_LEFT : DEST_AHEAD;
+            default: return 65;   // straight, merge, depart, unknown
         }
     }
 
