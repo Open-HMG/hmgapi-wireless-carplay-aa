@@ -89,7 +89,9 @@ public final class CpTurnsTest {
                 CpTurns.icon(1, 1, 0, -91, 1) == 0 && CpTurns.icon(2, 1, 0, 91, 1) == 0
                         && CpTurns.icon(11, 1, 0, 90, 1) == 0 && CpTurns.icon(11, 1, 1, 0, 1) == 0);
         c = new Cluster();
+        // the departure's icon 1 as #15 sends it (tbt_no_icon "no_info"); the default "clear" is below
         CpTurns t = new CpTurns(new android.content.Context(), c, null);
+        t.noIcon = "no_info";
         t.maneuver(maneuver(0, 2, 1, 0, 90, "Test Road", 100));
         t.routeGuidance(msg(0, U16, i(1), 1, ENUM, i(1), 11, STR, s("100"),
                 12, ENUM, i(2), 13, U16, i(0)));
@@ -109,6 +111,19 @@ public final class CpTurnsTest {
         t.routeGuidance(msg(0, U16, i(1), 1, ENUM, i(0)));
         expect("India route stop still clears HUD (and the cluster turn and trip, as any state 0)",
                 "tbt 0 0 0.0 0.0 -1 0 0 0 -1", "sub 0.0 -1 0 0 0 0 0 0.0 -1 0", "2c 0 0 0 0 0 0 0 0 0", "lanes f1", "hud f2", "hud f2");
+
+        // default "clear": a departure takes the last turn off the cluster and HUD, never icon 1
+        // (a spinner that outlives the session on a US EV6's cluster)
+        CpTurns d = new CpTurns(new android.content.Context(), c, null);
+        d.maneuver(maneuver(0, 2, 1, 0, 90, "Test Road", 100));
+        d.routeGuidance(msg(0, U16, i(1), 1, ENUM, i(1), 11, STR, s("100"), 12, ENUM, i(2), 13, U16, i(0)));
+        c.calls.clear();
+        d.maneuver(msg(0, U16, i(1), 1, U16, i(0), 3, ENUM, i(11)));
+        d.routeGuidance(msg(0, U16, i(1)));
+        expect("departure, default clear: turn, trip and HUD cleared, no icon 1",
+                "road [Test Road]", "tbt 0 0 0.0 0.0 -1 0 0 0 -1", "sub 0.0 -1 0 0 0 0 0 0.0 -1 0", "2c 0 0 0 0 0 0 0 0 0", "lanes f1", "hud f2", "hud f2");
+        d.routeGuidance(msg(0, U16, i(1)));
+        expect("departure again: nothing cleared twice", "road [Test Road]");
     }
 
     public static void main(String[] a) throws Exception {

@@ -329,8 +329,8 @@ final class CpTurns {
             default: unit = Cluster.UNIT_M; break;
         }
         int icon = icon(x.type, x.side, x.junction, x.exit, u.state);
-        // StartRoute has no direction: clear the previous app's HUD arrow.
-        if (x.type == 11 && icon == 1) hudBlank();
+        // StartRoute has no direction: clear the previous app's HUD arrow (when icon 1 is sent)
+        if (x.type == 11 && icon == NO_INFO && "no_info".equals(noIcon)) hudBlank();
         cluster.crossroadName(x.afterRoad);
         String how = "table";
         if (icon == 0) {
@@ -342,17 +342,18 @@ final class CpTurns {
                 // geometry the table doesn't have: a plain direction, else no arrow, never the last turn's
                 icon = aheadIcon(x.type, x.side, x.junction, x.exit);
                 how = "direction";
-                if (icon == 64) {
-                    if ("no_info".equals(noIcon)) {
-                        icon = NO_INFO;
-                        how = "no_info";
-                    } else {
-                        logTurn(id, list[0], x, "no arrow (" + noIcon + ")", dist, unit);
-                        // clear: ours off the cluster (turn, trip, HUD), once; skip: leave it
-                        if (!"skip".equals(noIcon) && shownIcon != 0) release();
-                        return;
-                    }
-                }
+            }
+        }
+        // no arrow (the table's NO_INFO, as StartRoute, or no plain direction): setting tbt_no_icon
+        if (icon == 64 || icon == NO_INFO) {
+            if ("no_info".equals(noIcon)) {
+                icon = NO_INFO;
+                if (!how.equals("table")) how = "no_info";
+            } else {
+                logTurn(id, list[0], x, "no arrow (" + noIcon + ")", dist, unit);
+                // clear: ours off the cluster (turn, trip, HUD), once; skip: leave it
+                if (!"skip".equals(noIcon) && shownIcon != 0) release();
+                return;
             }
         }
         logTurn(id, list[0], x, "icon " + icon + " (" + how + ")", dist, unit);
