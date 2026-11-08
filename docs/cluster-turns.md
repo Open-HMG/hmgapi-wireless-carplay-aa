@@ -59,12 +59,15 @@ angle before it, then `ROUNDABOUT_EXIT` once the car is in it, usually with no s
 angle. The Wireless mod keeps the exit icon from the first for the second, until the next
 maneuver.
 
-It never sends 64 (0x40, "no direction"): the cluster draws its loading spinner for it, in
-the turn and in the HUD list, measured on a Creta Electric
+For a roundabout it never sends 64 (0x40, "no direction"): the cluster draws its loading
+spinner for it, in the turn and in the HUD list, measured on a Creta Electric
 ([sirishant/HMG-API, `docs/creta/cluster-turn-by-turn.md`](https://github.com/sirishant/HMG-API/blob/creta-su2iev/docs/creta/cluster-turn-by-turn.md)),
 and on the road it stayed on through the roundabout until the next instruction. A
 roundabout with no exit to show gets straight (65). Roundabouts in the turns ahead get the
 same icons, with the cluster's direction rather than Android Auto's angle.
+
+64 is still sent elsewhere, with the same spinner: an unknown maneuver, a turn with no
+side, and in the turns ahead, ramps, forks and the other maneuvers without an icon there.
 
 ## Lanes
 
