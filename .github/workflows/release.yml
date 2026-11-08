@@ -126,7 +126,7 @@ jobs:
           v=${GITHUB_REF_NAME#v}
           notes=".github/release-notes/$GITHUB_REF_NAME.md"
           if [ -f "$notes" ]; then set -- --notes-file "$notes"; else set -- --generate-notes; fi
-          pre=""; case "$GITHUB_REF_NAME" in *-*) pre="--prerelease" ;; esac
+          pre=""; case "$GITHUB_REF_NAME" in *-*) pre="--prerelease --latest=false" ;; esac   # a pre-release is never "Latest"
           gh release create "$GITHUB_REF_NAME" --draft $pre --verify-tag --title "Wireless CarPlay + Android Auto $v" "$@" out/assets/*
           {
             echo "### Draft release $GITHUB_REF_NAME"

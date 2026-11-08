@@ -1,7 +1,7 @@
 # Contributing
 
 Thanks for helping. Bugs in this mod and requests to add a car go in
-[issues](https://github.com/Open-HMG/hmgapi-wireless-carplay-aa/issues/new/choose); code and
+[issues](https://github.com/Open-HMG/hmgapi-wireless-cp-aa/issues/new/choose); code and
 docs in pull requests. Problems with HMG-API itself (installing, the app, other mods, Car
 Reports, hook maps) go to [HMG-API](https://github.com/Open-HMG/HMG-API/issues/new/choose).
 

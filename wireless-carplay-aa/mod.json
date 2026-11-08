@@ -1,7 +1,7 @@
 {
   "id": "wireless-carplay-aa",
   "name": "Wireless CarPlay + Android Auto",
-  "version": "2.1.0",
+  "version": "2.2.0-beta.1",
   "hmgapi": ">=1.0.0",
   "authors": [
     "VysseCodes"
