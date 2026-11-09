@@ -55,6 +55,8 @@ public final class Dipo {
 
     static final String IAP2_ACTION = "com.remote.service.IAP2SERVICE";
     static final String CP_FIRST_CONNECTED = "com.android.app.PhoneProjection.CP_FIRST_CONNECTED";
+    /** to the car navigation (Wireless.navigation): a CarPlay route is on (extra "on"); same string there */
+    static final String CP_ROUTE = "hmgapi.mods.wireless.CP_ROUTE", NAVIGATION = "com.mnsoft.navi";
     /** iAP2 listener type for route guidance (notifications 120, 121, 122) */
     static final int LISTENER_ROUTE_GUIDANCE = 4096;
     static final int RG_UPDATE = 120, RG_MANEUVER = 121, RG_LANES = 122;
@@ -145,6 +147,29 @@ public final class Dipo {
             }
         });
         turns.noIcon = mod.settingString("tbt_no_icon", "straight");
+        turns.route = new CpTurns.Route() {
+            @Override
+            public void changed(final boolean on) {
+                Context c = app.context;
+                try {
+                    Intent i = new Intent(CP_ROUTE);
+                    i.setPackage(NAVIGATION);
+                    i.putExtra("on", on);
+                    c.sendBroadcast(i);
+                } catch (Throwable t) {
+                    error("CarPlay route state", t);
+                }
+                log("CarPlay turns: route " + (on ? "on" : "off") + ", told the car navigation (DiPO turn-by-turn mode "
+                        + Car.carPlayGuiding(c) + ")");
+                // does DiPO's own mode follow the route? (it decides whether the car navigation is muted without us)
+                if (!on) turnsHandler.postDelayed(new Runnable() {
+                    @Override
+                    public void run() {
+                        log("CarPlay turns: 5 s after the route ended, DiPO turn-by-turn mode " + Car.carPlayGuiding(app.context));
+                    }
+                }, 5000);
+            }
+        };
         rg = new RgListener();
         mod.hook(app.classLoader, "dipo.iap2_proxy.stop_route_guidance", new MethodHook() {
             @Override
@@ -392,6 +417,8 @@ public final class Dipo {
         final ClassLoader cl = app.classLoader;
         Bridge.cl = cl;
         Bridge.context = app.context;
+        Bridge.sWatchdog = mod.settingBoolean("bridge_watchdog", true);
+        log("bridge: watchdog " + (Bridge.sWatchdog ? "on" : "off"));
         // Broadcom's manager: DiPO registers its listener once the service is connected; the bridge's follows
         mod.hook(cl, "dipo.btcm.register_listener", new MethodHook() {
             @Override

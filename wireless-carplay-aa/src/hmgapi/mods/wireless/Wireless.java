@@ -88,14 +88,111 @@ public final class Wireless extends ModEntry {
      */
     private void navigation(final ModContext mod, final LoadedApp app) {
         if (!mod.settingBoolean("tbt", true)) return;
-        MethodHook skip = new MethodHook() {
-            @Override
-            protected void beforeHookedMethod(Param p) {
-                if (Car.phoneGuiding(app.context)) p.setResult(null);
-            }
-        };
-        for (String m : NAVI_TBT) mod.hook(null, "framework.navigation_cluster." + m, skip);
+        for (final String m : NAVI_TBT) {
+            final boolean keep = java.util.Arrays.asList(NAVI_REPLAY).contains(m);
+            mod.hook(null, "framework.navigation_cluster." + m, new MethodHook() {
+                @Override
+                protected void beforeHookedMethod(Param p) {
+                    if (REPLAYING.get() != null) return;
+                    if (keep) record(m, p);
+                    if (muted(mod, app.context)) p.setResult(null);
+                }
+            });
+        }
+        try {
+            IntentFilter f = new IntentFilter(CP_ROUTE);
+            app.context.registerReceiver(new BroadcastReceiver() {
+                @Override
+                public void onReceive(Context c, Intent i) {
+                    boolean on = i.getBooleanExtra("on", true);
+                    cpRoute = on;
+                    mod.log("navigation: CarPlay route " + (on ? "on" : "off"));
+                    // after DiPO's clear has reached the cluster: the car navigation's own state again
+                    if (!on) new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(new Runnable() {
+                        @Override
+                        public void run() {
+                            replay(mod, app.context);
+                        }
+                    }, REPLAY_DELAY_MS);
+                }
+            }, f, "android.permission.BLUETOOTH_PRIVILEGED", null);
+        } catch (Throwable t) {
+            mod.error("navigation: CarPlay route receiver", t);
+        }
         mod.log("navigation: turn-by-turn yields to the phone in " + app.processName);
+    }
+
+    /** from DiPO's CpTurns: a CarPlay route is on (extra "on"); same string in dipo/Dipo */
+    static final String CP_ROUTE = "hmgapi.mods.wireless.CP_ROUTE";
+    /** the last CarPlay route state DiPO told (null: none yet, then DiPO's turn-by-turn mode alone decides) */
+    static volatile Boolean cpRoute;
+    static volatile Boolean wasMuted;
+
+    /**
+     * The car navigation's cluster state calls, kept (the last of each, muted or not) to send
+     * again when a CarPlay route ends: it sends them when something changes, so parked after
+     * a route nothing would redraw the compass. Not the lanes, turn lists or destination name,
+     * which would be stale.
+     */
+    static final String[] NAVI_REPLAY = { "update_tbt_info", "update_tbt_sub_info", "update_tbt_sub_info_b",
+        "update_tbt_sub_info2", "update_tbt_sub_info2_b", "update_tbt_sub_info_2c", "update_remain_dis",
+        "update_tp_crossroad_name" };
+    static final long REPLAY_DELAY_MS = 1000;
+    static final ThreadLocal<Boolean> REPLAYING = new ThreadLocal<Boolean>();
+    /** point -> {method, this, args}, in the order last called */
+    static final java.util.LinkedHashMap<String, Object[]> lastCalls = new java.util.LinkedHashMap<String, Object[]>();
+
+    static void record(String point, MethodHook.Param p) {
+        synchronized (lastCalls) {
+            lastCalls.remove(point);
+            lastCalls.put(point, new Object[] { p.method, p.thisObject, p.args.clone() });
+        }
+    }
+
+    /** the kept calls again, through the hooks (REPLAYING lets them by), if the car navigation isn't muted */
+    static void replay(ModContext mod, Context c) {
+        if (muted(mod, c)) {
+            mod.log("navigation: not replaying its cluster state, still muted");
+            return;
+        }
+        Object[][] calls;
+        synchronized (lastCalls) {
+            calls = lastCalls.values().toArray(new Object[0][]);
+        }
+        int n = 0;
+        REPLAYING.set(Boolean.TRUE);
+        try {
+            for (Object[] x : calls) {
+                try {
+                    ((java.lang.reflect.Method) x[0]).invoke(x[1], (Object[]) x[2]);
+                    n++;
+                } catch (Throwable t) {
+                    mod.error("navigation: replay " + ((java.lang.reflect.Method) x[0]).getName(), t);
+                }
+            }
+        } finally {
+            REPLAYING.remove();
+        }
+        mod.log("navigation: CarPlay route ended, the car navigation's cluster state sent again (" + n + " call(s))");
+    }
+
+    /**
+     * The car navigation's turn-by-turn calls are skipped while Android Auto guides, or while
+     * CarPlay is in turn-by-turn mode with a route on. DiPO's mode can stay on after Apple
+     * Maps ends the route, and then nothing redraws the compass (the cluster showed its
+     * spinner, US EV6, 2026-11-08). Logged when it changes.
+     */
+    static boolean muted(ModContext mod, Context c) {
+        boolean aa = Car.androidAutoGuiding(c), cp = Car.carPlayGuiding(c);
+        Boolean route = cpRoute;
+        boolean m = aa || (cp && !Boolean.FALSE.equals(route));
+        Boolean was = wasMuted;
+        if (was == null || was != m) {
+            wasMuted = m;
+            mod.log("navigation: turn-by-turn " + (m ? "muted" : "back to the car") + " (Android Auto guiding " + aa
+                    + ", CarPlay turn-by-turn mode " + cp + ", CarPlay route " + route + ")");
+        }
+        return m;
     }
 
     /**

@@ -57,6 +57,15 @@ final class CpTurns {
      * spinner while guidance is on (US EV6, 2026-11-08), and clearing also takes the distance.
      */
     String noIcon = "straight";
+    /** a destination name of ours is on the cluster (cleared when the route ends) */
+    boolean destShown;
+    /** told when a CarPlay route starts and ends (Dipo: the car navigation's cluster calls are muted only while one is on) */
+    interface Route {
+        void changed(boolean on);
+    }
+    Route route;
+    /** the last route state told (null: none yet) */
+    Boolean routeOn;
 
     CpTurns(Context context, Cluster cluster, Runnable restart) {
         this.context = context;
@@ -243,13 +252,33 @@ final class CpTurns {
     /** the iAP2 session ended (DiPO e/u.disconnected) */
     void disconnected() {
         reset();
-        release();
+        end();
         source = null;
     }
 
     /** route guidance stopped (DiPO e/u.nS: the car's navigation took turn-by-turn back, or state 0) */
     void stop() {
+        end();
+    }
+
+    /**
+     * The route ended (or the session): ours off the cluster, the destination name too,
+     * and the car navigation told it can have the cluster back (it draws the compass;
+     * our cleared turn alone is the spinner while it stays muted, US EV6, 2026-11-08).
+     */
+    void end() {
         release();
+        if (destShown) {
+            cluster.destinationName(0, "");
+            destShown = false;
+        }
+        route(false);
+    }
+
+    void route(boolean on) {
+        if (routeOn != null && routeOn == on) return;
+        routeOn = on;
+        if (route != null) route.changed(on);
     }
 
     /**
@@ -307,6 +336,7 @@ final class CpTurns {
             stop();
             return;
         }
+        route(true);
         int[] list = u.list == null ? null : u.list.clone();
         float dist = 0f;
         if (u.nextStr != null && !u.nextStr.equals("")) {
@@ -317,7 +347,10 @@ final class CpTurns {
                 dist = 0f;
             }
         }
-        if (u.state == 6) cluster.destinationName(0, u.destination);
+        if (u.state == 6) {
+            cluster.destinationName(0, u.destination);
+            destShown = u.destination != null && u.destination.length() > 0;
+        }
         LinkedHashMap<Integer, Maneuver> m = maneuvers.get(id);
         if (m == null || list == null) return;
         Maneuver x = m.get(list[0]);

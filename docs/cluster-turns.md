@@ -108,6 +108,23 @@ highway exit and keep left/right (types 8, 13, 14, up to 17 miles), and every ro
 in the table. `tbt_no_icon` keeps "clear", "skip" (2.1.0) and "no_info" (icon 1) as
 choices.
 
+## When a CarPlay route ends
+
+While a phone guides, the mod skips the car navigation's own turn-by-turn calls to the
+cluster (`navi.tbt`), so they don't fight the phone's. With CarPlay that now lasts only
+while a route is on: `CpTurns` tells the car navigation's process when the route starts and
+ends (broadcast `hmgapi.mods.wireless.CP_ROUTE`, sent only to `com.mnsoft.navi` and only
+from apps holding `BLUETOOTH_PRIVILEGED`), and when it ends it clears the destination name.
+
+Letting the calls through again isn't enough: the car navigation sends its compass and
+"no route" state once, when it changes, not again. So the mod keeps the last call of each
+cluster method it skipped (`update_tbt_info`, the `update_tbt_sub_info` family,
+`update_remain_dis`, `update_tp_crossroad_name`) and, 1 s after the route ends, sends them
+again. On a US EV6 (260507, 2026-11-08) the cluster kept the spinner after a CarPlay route
+ended until this; with it, the compass is back within about a second.
+
+Android Auto's end of route isn't handled this way yet.
+
 ## Lanes
 
 The car navigation keeps running under a phone's guidance with no route, and sends the

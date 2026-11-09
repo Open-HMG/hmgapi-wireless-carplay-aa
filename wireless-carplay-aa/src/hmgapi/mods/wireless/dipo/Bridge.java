@@ -3,9 +3,12 @@ package hmgapi.mods.wireless.dipo;
 import android.bluetooth.BluetoothDevice;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
+import android.media.AudioManager;
 import android.net.wifi.WifiConfiguration;
 import android.os.Handler;
 import android.os.HandlerThread;
+import android.os.SystemClock;
 
 import com.broadcom.bt.hfdevice.hfbtcm.HfDeviceBTCMManager;
 import com.broadcom.bt.hfdevice.hfbtcm.HfDeviceStatusListener;
@@ -67,6 +70,19 @@ final class Bridge {
     private static final ArrayList<byte[]> sPendingIn = new ArrayList<byte[]>();
     private static BtListener sBt;
     private static TxListener sTx;
+    /** setting bridge_watchdog: start wireless CarPlay again when it doesn't come back by itself (Watchdog) */
+    static volatile boolean sWatchdog = true;
+    /** the phone of the last Bluetooth session (sAddr is cleared when SPP goes down) */
+    static volatile String sPhone;
+    /** only on the handler thread */
+    private static final Watchdog sWd = new Watchdog();
+    private static final Runnable sWdCheck = new Runnable() {
+        @Override
+        public void run() {
+            wdCheck();
+        }
+    };
+    static final String PREFS = "hmgapi_wireless_cp";
 
     private Bridge() {}
 
@@ -174,7 +190,12 @@ final class Bridge {
     static void onSppUp(final String addr) {
         if (addr == null || sSession) return;
         sAddr = addr;
-        if (sCpClient || sCpWireless || !enabled() || sUsb) return;
+        sPhone = addr;
+        if (sCpClient || sCpWireless || !enabled() || sUsb) {
+            log("SPP up, no iAP2 session started (CarPlay client " + sCpClient + ", wireless " + sCpWireless
+                    + ", enabled " + enabled() + ", USB " + sUsb + ")");
+            return;
+        }
         sSession = true;
         handler().post(new Runnable() {
             @Override
@@ -194,6 +215,8 @@ final class Bridge {
                     i.putExtra("serial", addr);
                     c.sendBroadcast(i);
                     log("BT_ATTACHED sent for " + addr);
+                    sWd.attached(now(), known(addr));
+                    wdSchedule("waiting for the session");
                 } catch (Throwable t) {
                     sSession = false;
                     error("onSppUp", t);
@@ -227,8 +250,18 @@ final class Bridge {
     }
 
     static void onCpSessionStarted(int transport) {
-        sCpWireless = transport == 1 && !sUsb;
+        final boolean wireless = transport == 1 && !sUsb;
+        sCpWireless = wireless;
         log("CarPlay session started transport=" + transport + " wireless=" + sCpWireless);
+        handler().post(new Runnable() {
+            @Override
+            public void run() {
+                if (sWd.attempts > 0) log("watchdog: session back after " + sWd.attempts + " attempt(s)");
+                sWd.sessionStarted(now());
+                wdSchedule(null);
+                if (wireless) remember(sPhone);
+            }
+        });
     }
 
     /** iAP2 bytes from the phone over the CarPlay channel: to the iAP2 server (buffered until its session is up) */
@@ -266,6 +299,16 @@ final class Bridge {
             }
             if (client) sendDetach();
             if (client || wireless) onUsbGone();
+            // every end reaches the watchdog (a USB one too, so it doesn't stay "up"); only a wireless one can arm it
+            final boolean bridged = client, ours = client || wireless;
+            handler().post(new Runnable() {
+                @Override
+                public void run() {
+                    boolean present = ours && phonePresent();
+                    sWd.sessionEnded(now(), bridged, present);
+                    wdSchedule(!ours ? null : present ? sWd.reason : "the phone isn't connected over Bluetooth, nothing to do");
+                }
+            });
         } catch (Throwable t) {
             error("onCpSessionFinalized", t);
         }
@@ -386,6 +429,130 @@ final class Bridge {
         }
     }
 
+    static long now() {
+        return SystemClock.elapsedRealtime();
+    }
+
+    /** (handler thread) the next check at the watchdog's deadline; why: logged when there is one */
+    static void wdSchedule(String why) {
+        Handler h = handler();
+        h.removeCallbacks(sWdCheck);
+        long d = sWd.deadline;
+        if (!sWatchdog || d == 0) return;
+        long in = Math.max(0, d - now());
+        h.postDelayed(sWdCheck, in);
+        if (why != null) log("watchdog: " + why + (sWd.armed ? " (armed)" : "") + ", next check in " + (in / 1000) + " s");
+    }
+
+    /** (handler thread) the watchdog's deadline: carry out what it says */
+    static void wdCheck() {
+        try {
+            final String addr = sPhone;
+            HfDeviceBTCMManager m = sBtcm;
+            if (!sWatchdog || addr == null || m == null || !enabled() || sUsb) {
+                sWd.stop();
+                return;
+            }
+            boolean spp = m.IbtcmIsSppConnectedDevice(addr);
+            Watchdog.Action a = sWd.check(now(), spp, inCall(), phonePresent(), !wifiJoined());
+            switch (a) {
+                case SPP_CONNECT:
+                    log("watchdog: attempt " + sWd.attempts + " (" + sWd.reason + "): IbtcmSppConnect(" + addr + ") = "
+                            + m.IbtcmSppConnect(addr));
+                    break;
+                case REIDENTIFY:
+                    // no session is up (the watchdog checked), so these are stale and would block onSppUp
+                    if (sCpClient || sCpWireless) {
+                        log("watchdog: clearing stale CarPlay flags (client " + sCpClient + ", wireless " + sCpWireless + ")");
+                        sCpClient = false;
+                        sCpWireless = false;
+                        sCpConnected = false;
+                    }
+                    log("watchdog: attempt " + sWd.attempts + " (" + sWd.reason + "): iAP2 over Bluetooth again (identification)");
+                    // BT_ATTACHED again: the iAP2 server stops the old Bluetooth session and starts a new one
+                    sSession = false;
+                    onSppUp(addr);
+                    break;
+                case WIFI_BUSY:
+                    log("watchdog: the head unit's Wi-Fi is joined to a network, so its hotspot is off: not restarting CarPlay ("
+                            + sWd.reason + ")");
+                    break;
+                case GIVE_UP:
+                    log("watchdog: gave up after " + sWd.attempts + " attempt(s) (" + sWd.reason
+                            + "); it tries again after the phone connects again");
+                    break;
+                default:
+                    break;
+            }
+        } catch (Throwable t) {
+            error("watchdog", t);
+        } finally {
+            wdSchedule(null);
+        }
+    }
+
+    /** the phone of the last session is connected over Bluetooth (HFP) */
+    static boolean phonePresent() {
+        try {
+            HfDeviceBTCMManager m = sBtcm;
+            String addr = sPhone;
+            BluetoothDevice d = m == null ? null : m.IbtcmGetHfpConnectedDevice();
+            return d != null && addr != null && addr.equalsIgnoreCase(d.getAddress());
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /** the head unit's Wi-Fi is on as a client (e.g. for adb over Wi-Fi) and its hotspot is off */
+    static boolean wifiJoined() {
+        try {
+            Object wifi = context.getSystemService(Context.WIFI_SERVICE);
+            if (wifi == null) return false;
+            Class<?> k = wifi.getClass();
+            boolean sta = (Boolean) k.getMethod("isWifiEnabled").invoke(wifi);
+            boolean ap = false;
+            try {
+                ap = (Boolean) k.getMethod("isWifiApEnabled").invoke(wifi);
+            } catch (Throwable t) {
+                // no such call: treat as off
+            }
+            return sta && !ap;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /** a phone call is on (the car's or CarPlay's): no reconnecting then */
+    static boolean inCall() {
+        try {
+            AudioManager am = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
+            int mode = am.getMode();
+            return mode == AudioManager.MODE_IN_CALL || mode == AudioManager.MODE_IN_COMMUNICATION || mode == AudioManager.MODE_RINGTONE;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /** this phone had a wireless CarPlay session here (kept across restarts) */
+    static boolean known(String addr) {
+        try {
+            return addr != null && context.getSharedPreferences(PREFS, 0).getBoolean(addr.toUpperCase(), false);
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    static void remember(String addr) {
+        try {
+            if (addr == null || known(addr)) return;
+            SharedPreferences.Editor e = context.getSharedPreferences(PREFS, 0).edit();
+            e.putBoolean(addr.toUpperCase(), true);
+            e.apply();
+        } catch (Throwable t) {
+            error("remember", t);
+        }
+    }
+
     static void sendDetach() {
         handler().post(new Runnable() {
             @Override
@@ -474,6 +641,14 @@ final class Bridge {
                 if (isApple(d)) {
                     log("iPhone BT connected: " + d.getAddress());
                     scheduleSppConnect(d.getAddress());
+                    handler().post(new Runnable() {
+                        @Override
+                        public void run() {
+                            boolean was = sWd.armed;
+                            sWd.phoneConnected(now());
+                            if (sWd.armed && !was) wdSchedule(sWd.reason);
+                        }
+                    });
                 }
             } catch (Throwable t) {
                 error("connEvent", t);
@@ -507,7 +682,16 @@ final class Bridge {
             log("iAP2 connected comp=" + component);
             // what DiPO keeps as the current device (setCurrentIapDeviceName): a Bluetooth address is the notice's key
             if ((component == COMPONENT_USB || component == COMPONENT_BT_CARPLAY) && serial != null && serial.contains(":")) sLastBtId = serial;
-            if (component == COMPONENT_USB) sUsb = true;
+            if (component == COMPONENT_USB) {
+                sUsb = true;
+                handler().post(new Runnable() {
+                    @Override
+                    public void run() {
+                        sWd.stop();
+                        wdSchedule(null);
+                    }
+                });
+            }
             else if (component == COMPONENT_CARPLAY_CLIENT) onCpClientConnected();
         }
 

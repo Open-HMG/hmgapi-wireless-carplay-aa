@@ -50,6 +50,14 @@
       "apply": "rebuild"
     },
     {
+      "key": "bridge_watchdog",
+      "type": "toggle",
+      "default": true,
+      "title": "Restart wireless CarPlay when it doesn't come back",
+      "apply": "restart",
+      "description": "When a wireless session ends while the iPhone is still connected over Bluetooth and the phone doesn't start it again, the car redoes the Bluetooth handshake (up to 5 times, waiting longer each time). Never during a call, a running session or USB CarPlay, or while the head unit's Wi-Fi is joined to a network (its hotspot is off then). A phone that hasn't used wireless CarPlay here yet (its first setup) is left alone."
+    },
+    {
       "key": "audio",
       "type": "toggle",
       "default": true,

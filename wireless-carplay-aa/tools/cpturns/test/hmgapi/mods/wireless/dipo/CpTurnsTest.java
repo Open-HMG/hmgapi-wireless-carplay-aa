@@ -177,6 +177,13 @@ public final class CpTurnsTest {
             }
         });
         final int RIGHT = 2, LEFT = 1, STRAIGHT = 3, UTURN = 4, ARRIVE = 12, MILES = 1, KM = 0, FEET = 4;
+        final StringBuilder routes = new StringBuilder();
+        t.route = new CpTurns.Route() {
+            @Override
+            public void changed(boolean on) {
+                routes.append(on ? "on " : "off ");
+            }
+        };
 
         t.maneuver(maneuver(0, RIGHT, 0, 0, 90, "Main St", 300));
         t.maneuver(maneuver(1, LEFT, 0, 0, -90, "Oak Ave", 800));
@@ -255,8 +262,10 @@ public final class CpTurnsTest {
                 "road [Home Rd]", "2c 0 0 0 0 0 0 0 0 0", "lanes f1", "hud f2", "hud f2", "tbt 3 0 0.0 300.0 0 0 3 0 0", "2c 3 0 300 0 0 0 0 0 0");
 
         t.routeGuidance(msg(0, U16, i(1), 1, ENUM, i(0)));
-        expect("state 0: cluster turn, trip and HUD cleared", "tbt 0 0 0.0 0.0 -1 0 0 0 -1", "sub 0.0 -1 0 0 0 0 0 0.0 -1 0",
-                "2c 0 0 0 0 0 0 0 0 0", "lanes f1", "hud f2", "hud f2");
+        expect("state 0: cluster turn, trip and HUD cleared, and the destination name", "tbt 0 0 0.0 0.0 -1 0 0 0 -1",
+                "sub 0.0 -1 0 0 0 0 0 0.0 -1 0", "2c 0 0 0 0 0 0 0 0 0", "lanes f1", "hud f2", "hud f2", "dest 0 []");
+        check("route off at state 0 (a source change in between turned it off and on): " + routes, routes.toString().equals("on off on off "));
+        routes.setLength(0);
 
         t.routeGuidance(msg(0, U16, i(1), 1, ENUM, i(1)));
         t.stop();
@@ -266,6 +275,7 @@ public final class CpTurnsTest {
 
         t.disconnected();
         expect("iAP2 session ended: HUD cleared", "2c 0 0 0 0 0 0 0 0 0", "lanes f1", "hud f2", "hud f2");
+        check("a route again, then stop and the session end: on, then off once: " + routes, routes.toString().equals("on off "));
         t.routeGuidance(msg(0, U16, i(1), 1, ENUM, i(1), 11, STR, s("0.5"), 12, ENUM, i(MILES), 13, U16, i(5), 19, STR, s("Maps")));
         expect("after the session ended: maneuvers gone, a new source isn't a change", "");
         c.calls.clear();
