@@ -105,6 +105,8 @@ public final class AaTurnsTest {
         expect("depart (first): road as destination, no distance yet", "dest 0 [Start Rd]", "tbt 2 65535 0.0 -1.0 0 0 0 254 -2");
         d.nextTurn("Circle", RIGHT, 13, 100, 0);
         expect("roundabout, exit at 100 degrees", "road [Circle]", "tbt 99 65535 90.0 -1.0 0 0 0 254 -2", "hud f201630000" + utf16("Circle"));
+        check("maneuver log: event, side, angle, number, what it became",
+                "HMG-API [wireless-carplay-aa] AA turn: event 13 side 2 angle 100 number 0 -> type 99 dir 90".equals(android.util.Log.last));
         d.nextTurn("Old Rd", 0, 11, 0, 0);
         expect("roundabout enter: not for the cluster");
         final int UNSPECIFIED = 3;
@@ -179,6 +181,8 @@ public final class AaTurnsTest {
         s.nextTurnDistance(9, 1, 29529, FEET);
         expect("standard: 29 ft: bar 10 (at least 1)", "tbt 13 0 270.0 29.529 0 0 3 10 0", "2c 3 0 29 0 0 0 0 0 0");
         s.nextTurn("Hwy 9", 0, 14, -1, 0);
+        check("maneuver log, standard turns: also what goes out near it",
+                "HMG-API [wireless-carplay-aa] AA turn: event 14 side 0 angle -1 number 0 -> type 65 dir 0, near: type 13 dir 0".equals(android.util.Log.last));
         expect("standard: straight near: TURN 0", "road [Hwy 9]", "tbt 13 0 0.0 29.529 0 0 3 10 0",
                 "hud f201410000" + utf16("Hwy 9"), "2c 3 0 29 0 0 0 0 0 0");
 

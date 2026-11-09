@@ -182,9 +182,27 @@ final class AaTurns {
                 direction = 0;
                 break;
             default:
+                logTurn();
                 return;   // ROUNDABOUT_ENTER, FERRY_TRAIN: not for the cluster
         }
+        logTurn();
         sendTurn();
+    }
+
+    /**
+     * One line per maneuver in HMG-API's log (and so in a Car Report): Android Auto's event,
+     * side, angle and number, and the type and direction it became; with standard turns, also
+     * what goes out near it. Numbers only, no road names. Issue #19: which side Android Auto
+     * gives a roundabout, and which way the cluster then draws it.
+     */
+    void logTurn() {
+        String s = "[wireless-carplay-aa] AA turn: event " + event + " side " + turnSide + " angle " + turnAngle
+                + " number " + turnNumber + " -> type " + displayType + " dir " + direction;
+        if (standardTurns) {
+            int[] n = standard(event, turnSide, displayType, direction, GUIDE_WINDOW);
+            s += ", near: type " + n[0] + " dir " + n[1];
+        }
+        Log.i("HMG-API", s);
     }
 
     void nextTurnDistance(int meters, int seconds, int e3, int unitFlags) {
