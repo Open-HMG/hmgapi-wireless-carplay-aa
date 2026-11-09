@@ -111,6 +111,9 @@ public final class AaTurnsTest {
         d.nextTurn("Old Rd", UNSPECIFIED, 12, -1, 0);
         expect("in the roundabout (exit, no side, no angle): its exit stays on, not 64 (the cluster's spinner)",
                 "road [Old Rd]", "tbt 99 65535 90.0 -1.0 0 0 0 254 -2", "hud f201630000" + utf16("Old Rd"));
+        d.nextTurn("Old Rd", LEFT, 12, -1, 0);
+        expect("in the roundabout with a side (LEFT, as for a US one): its exit stays on, not 33 (clockwise)",
+                "road [Old Rd]", "tbt 99 65535 90.0 -1.0 0 0 0 254 -2");
         d.nextTurn("Pine St", RIGHT, TURN, -1, 0);
         expect("after the roundabout: the next turn", "road [Pine St]", "tbt 67 65535 90.0 -1.0 0 0 0 254 -2", "hud f201430000" + utf16("Pine St"));
         d.nextTurn("Ring Rd", UNSPECIFIED, 12, -1, 0);
@@ -194,7 +197,9 @@ public final class AaTurnsTest {
         stdCase("exit left: EXIT_LEFT 270", OFF_RAMP, LEFT, 82, 330, 300, "18 270 60");
         stdCase("merge: TURN 0", MERGE, 0, 65, 0, 100, "13 0 20");
         stdCase("roundabout, exit at 90: roundabout (32), the exit's direction", RB_BOTH, RIGHT, 99, 90, 200, "32 90 40");
-        stdCase("roundabout, left-hand traffic: 33", RB_EXIT, LEFT, 33, 0, 200, "33 0 40");
+        stdCase("roundabout marked LEFT (a US one, issue #19): 32, counterclockwise, not 33", RB_EXIT, LEFT, 99, 90, 200, "32 90 40");
+        stdCase("roundabout marked RIGHT: 32", RB_BOTH, RIGHT, 105, 270, 200, "32 270 40");
+        stdCase("a clockwise icon (192-203): 33", RB_BOTH, 0, 195, 90, 200, "33 90 40");
         stdCase("on-ramp: the icon, with the bar", ON_RAMP, RIGHT, 173, 30, 200, "173 30 40");
         stdCase("ferry: the icon, with the bar", FERRY, 0, 176, 0, 200, "176 0 40");
         stdCase("turn without a side: the icon (straight), with the bar", TURN, 0, 65, 0, 200, "65 0 40");
