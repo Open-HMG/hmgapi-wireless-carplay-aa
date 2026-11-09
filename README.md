@@ -43,7 +43,7 @@ Other regions wait for now. Your car isn't listed? Open an "Add my car" issue.
 ## Installing
 
 Install HMG-API first ([Installing HMG-API](https://github.com/Open-HMG/HMG-API/wiki/Installing-HMG-API)).
-Then, from this repository's [releases](https://github.com/Open-HMG/hmgapi-wireless-carplay-aa/releases):
+Then, from this repository's [releases](https://github.com/Open-HMG/hmgapi-wireless-cp-aa/releases):
 
 - **USB stick**: put `wireless-carplay-aa-<version>.zip` in `HMGAPI/updates/` on the
   stick, then HMG-API app → Check USB updates → the mod → Apply changes.

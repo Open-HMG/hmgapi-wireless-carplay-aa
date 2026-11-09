@@ -26,11 +26,12 @@ jobs:
         run: |
           v=$(python3 -c 'import json; print(json.load(open("wireless-carplay-aa/mod.json"))["version"])')
           test "v$v" = "$GITHUB_REF_NAME" || { echo "tag $GITHUB_REF_NAME, but wireless-carplay-aa/mod.json's version is $v"; exit 1; }
+          echo "$v" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.(0|[1-9][0-9]*))?$' || { echo "$v: x.y.z or x.y.z-alpha.N, -beta.N, -rc.N (HMG-API's docs/releasing.md)"; exit 1; }
       - run: python3 .github/check-pin.py
 
   ci:
     needs: version
-    uses: Open-HMG/HMG-API/.github/workflows/mod.yml@5b05ad6da3b5ae5e795240e2f1aaf7d893198997
+    uses: Open-HMG/HMG-API/.github/workflows/mod.yml@a527d1f467117544bc4051e0b9f1e2882d7396aa
 
   release:
     needs: ci
@@ -126,11 +127,14 @@ jobs:
           v=${GITHUB_REF_NAME#v}
           notes=".github/release-notes/$GITHUB_REF_NAME.md"
           if [ -f "$notes" ]; then set -- --notes-file "$notes"; else set -- --generate-notes; fi
-          pre=""; case "$GITHUB_REF_NAME" in *-*) pre="--prerelease" ;; esac
+          pre=""; case "$GITHUB_REF_NAME" in *-*) pre="--prerelease --latest=false" ;; esac   # a pre-release is never "Latest"
           gh release create "$GITHUB_REF_NAME" --draft $pre --verify-tag --title "Wireless CarPlay + Android Auto $v" "$@" out/assets/*
           {
             echo "### Draft release $GITHUB_REF_NAME"
-            echo "Not published. Once it is, the catalogue PR in HMG-API (a maintainer's) starts with:"
+            case "$v" in
+              *-*) echo "Not published. A pre-release isn't for the catalogue (finals only); a HMG-API pre-release that bundles it pins it with this tools/release-mods.txt line:" ;;
+              *) echo "Not published. Once it is, the catalogue PR in HMG-API (a maintainer's) starts with:" ;;
+            esac
             echo '```'
             cat out/catalog-command.txt
             echo '```'

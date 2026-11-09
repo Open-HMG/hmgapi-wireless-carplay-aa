@@ -9,7 +9,7 @@
 set -e
 MOD=wireless-carplay-aa
 UUID=7251ce71-a146-8a1e-958b-dbffc6af7359
-REPO=https://github.com/Open-HMG/hmgapi-wireless-carplay-aa
+REPO=https://github.com/Open-HMG/hmgapi-wireless-cp-aa
 TAG=${1:?usage: release.sh <tag> <author key>}; KEY=${2:?usage: release.sh <tag> <author key>}
 SDK=$(cd "${HMGAPI_SDK:?set HMGAPI_SDK to the unpacked HMG-API mod SDK}" && pwd)
 cd "$(dirname "$0")/.."
@@ -34,7 +34,14 @@ sh "$SDK/bin/mknemesismod.sh" "$Z" out/dist
 mkdir -p out/assets
 cp "$Z" out/dist/"$MOD-$V"-nemesis.zip out/dist/"$MOD-$V"-nemesis-package.zip out/assets/
 (cd out/assets && sha256sum *.zip > SHA256SUMS && cat SHA256SUMS)
-# for the catalogue PR in HMG-API, once the release is published (a maintainer's)
+# for the catalogue PR in HMG-API, once the release is published (a maintainer's); the
+# catalogue lists finals only, so for a pre-release the line a HMG-API pre-release pins it
+# with (tools/release-mods.txt)
 D=$REPO/releases/download/$TAG/$MOD-$V.zip
-printf '%s\n' "curl -fLO $D" "tools/catalog.py add $MOD-$V.zip --download $D --repo $REPO" > out/catalog-command.txt
-echo "Catalogue (in HMG-API, after publishing):"; cat out/catalog-command.txt
+case $V in
+    *-*) echo "$MOD $V $D $(sha256sum < "$Z" | cut -d' ' -f1)" > out/catalog-command.txt
+         echo "Pre-release: not for the catalogue. tools/release-mods.txt line, for a HMG-API pre-release:" ;;
+    *) printf '%s\n' "curl -fLO $D" "tools/catalog.py add $MOD-$V.zip --download $D --repo $REPO" > out/catalog-command.txt
+       echo "Catalogue (in HMG-API, after publishing):" ;;
+esac
+cat out/catalog-command.txt
