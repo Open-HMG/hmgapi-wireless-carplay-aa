@@ -1,7 +1,8 @@
 # The AR HUD and the speed limit under Android Auto
 
-How the Wireless mod gets the AR HUD to animate Android Auto's turns, and what it takes
-to fill the cluster's distance bar without losing the car's speed-limit sign. Worked out
+How the Wireless mod gets the AR HUD to animate Android Auto's turns, and what it will
+take to fill the cluster's distance bar without losing the car's speed-limit sign (the
+sections marked "Planned" aren't in the mod yet). Worked out
 on a US Ioniq 5 with the AR HUD (NEEV23, head unit 260507, November 2026) from
 `dumpsys com.hkmc.micom.cluster`, logcat and the cluster service's logs on drives with
 the car's navigation and with Android Auto. Nothing here is the car's code; it describes
@@ -30,15 +31,18 @@ The AR HUD draws its animated arrow from the cluster's **main turn display**
 This is the `tbt_standard` setting ("Android Auto turns in the car's own format", off by
 default), `AaTurns.standard()`.
 
-### The arrow gliding: the exact distance
+### Planned: the arrow gliding with the exact distance
+
+> **Not in the mod yet.** The mod still sends Android Auto's display distance. This part
+> has only been in test builds (2.2.1-test.2) on one car so far.
 
 The arrow moves toward the turn as the distance drops. Android Auto's turn-by-turn
 reports the **display** distance once a second (50 ft or 0.1 mi steps), so the arrow
-stepped and lagged. Near a maneuver the standard format now sends:
+steps and lags. Near a maneuver the standard format will send:
 
 - **Maps' exact distance** (meters, converted to the cluster's unit) instead of the
   rounded one;
-- **a countdown between Maps' reports**: every 250 ms the distance drops at Maps' own
+- **a countdown between Maps' reports**: every 250 ms the distance will drop at Maps' own
   pace (its meters and seconds to the turn), for at most 1.5 s after its last report.
   If Maps goes quiet, the distance holds instead of running past the turn.
 
@@ -79,40 +83,47 @@ up in any capture.
   listener class, and the mod would have to hard-code the US unit and type values, which
   Canada's cars don't use.
 
-### What the mod does (2.2.1 test builds)
+### Planned: the bar in the car navigation's own frame
 
-The bar goes the other way: from Android Auto's side to the car's navigation, which
+> **Not in the mod yet.** On today's mod the bar stays empty under Android Auto, and the
+> speed limit is the car navigation's. This part has only been in test builds
+> (2.2.1-test.2) on one car, with a hand-patched hook map. It needs four HMG-API hook
+> points that haven't been proposed to HMG-API yet (below).
+
+The bar will go the other way: from Android Auto's side to the car's navigation, which
 already has the right speed limit.
 
-1. **In GPM**, with standard turns on, `AaTurns` works out the bar the way the car does,
-   `(100 - progress) / 10`, at least 1, over about 457 m, sent ×10 (90 down to 10). It
-   broadcasts it (`hmgapi.mods.wireless.TBT_BAR`, extra `bar`) when it changes, every 2 s
-   while it's on, and 0 when guidance stops.
-2. **In the car's navigation** (`com.mnsoft.navi`), the Wireless hook on
-   `updateTBTTrapInfo` (both forms: 17 ints, or `NaviTbtTrapInfo`) puts the bar into
+1. **In GPM**, with standard turns on, `AaTurns` will work out the bar the way the car
+   does, `(100 - progress) / 10`, at least 1, over about 457 m, sent ×10 (90 down to 10),
+   and broadcast it (`hmgapi.mods.wireless.TBT_BAR`, extra `bar`) when it changes, every
+   2 s while it's on, and 0 when guidance stops.
+2. **In the car's navigation** (`com.mnsoft.navi`), a Wireless hook on
+   `updateTBTTrapInfo` (both forms: 17 ints, or `NaviTbtTrapInfo`) will put the bar into
    each trap frame the navigation sends. Everything else in the frame stays the car's:
    the speed limit, its unit and type, cameras and warnings.
-3. **When the bar changes**, the hook sends the car navigation's last trap frame again
-   with the new bar, since the navigation itself only sends on its own changes.
+3. **When the bar changes**, the hook will send the car navigation's last trap frame
+   again with the new bar, since the navigation itself only sends on its own changes.
 4. **It fails safe.** If the bar is more than 5 s old, or no phone is guiding, the frame
    goes through as the car's navigation sent it.
 
-This needs four hook points HMG-API doesn't have yet, all in the framework:
+**What it needs from HMG-API first:** four framework hook points,
 `framework.navigation_cluster.update_tbt_trap_info`,
 `framework.navigation_cluster.update_tbt_trap_info_new`, `framework.navi_tbt_trap_info`
-and `framework.navi_tbt_trap_info.bar_graph_level`. They're mapped on the US Ioniq 5
-260507 only. HMG-API turns off all of a mod's hooks on a car whose map lacks a point the
-mod declares, so they have to be in HMG-API's catalogue and mapped on every car (a
-HMG-API pull request, then `map-car.py` on the stock trees, or "Map this car from its
-files" on cars mapped from Car Reports) before the bar can ship in Wireless.
+and `framework.navi_tbt_trap_info.bar_graph_level`. HMG-API turns off all of a mod's
+hooks on a car whose map lacks a point the mod declares, so they have to be in HMG-API's
+catalogue and mapped on every car before the bar can ship in Wireless: a HMG-API pull
+request (not opened yet), then `map-car.py` on the stock trees, or "Map this car from its
+files" on cars mapped from Car Reports.
 
 ## Checking on a car
 
 - `adb shell dumpsys com.hkmc.micom.cluster`: the last turn frame (type by name,
   direction, distance) and trap frame (bar, speed limit) the cluster service got.
 - logcat, tag `ClusterService`: each `NaviCluster.updateTBTTrapInfo()` with its
-  `barGraphLevel` and `speedLimit`. With the fix, under Android Auto the bar counts down
-  90 to 10 toward each turn and the speed limit stays the car navigation's.
-- HMG-API's log (`/data/hmgapi/logs/hmgapi/log.log`): "navigation: Android Auto's
-  distance bar goes in its trap frame (com.mnsoft.navi)" once the hook is in, or "...is
-  off on this car (... not mapped)" when the car's map doesn't have the points.
+  `barGraphLevel` and `speedLimit`. Today, under Android Auto the bar stays 0 and the
+  speed limit is the car navigation's. With the planned bar, the bar would count down 90
+  to 10 toward each turn and the speed limit stay the car navigation's.
+- With the planned bar only, HMG-API's log (`/data/hmgapi/logs/hmgapi/log.log`):
+  "navigation: Android Auto's distance bar goes in its trap frame (com.mnsoft.navi)" once
+  the hook is in, or "...is off on this car (... not mapped)" when the car's map doesn't
+  have the points.

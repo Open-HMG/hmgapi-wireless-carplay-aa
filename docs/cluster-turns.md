@@ -43,8 +43,9 @@ was about 457 m (1,500 ft) out: 0.3 mi 9, 900 ft 6, 800 ft 5, 300 ft 2, 30 ft 1.
 cluster shows it ×10 (90 ... 10). The navigation also sends the same bar in its trap
 data (`updateTBTTrapInfo`, `barGraphLevel`), with the speed limit and cameras. The
 cluster's bar is drawn from that trap data, which also sets the speed-limit sign, so
-the Wireless mod never sends trap data of its own: [ar-hud.md](ar-hud.md) has how the
-bar gets there with the car navigation's speed limit kept.
+the Wireless mod never sends trap data of its own, and under Android Auto the bar stays
+empty for now. [ar-hud.md](ar-hud.md) has the planned way to fill it with the car
+navigation's speed limit kept.
 
 **Side streets** (the 16-bit `sideStreet`, one bit per 22.5 degrees) are the roads
 the cluster draws around a `TURN` arrow. The car's navigation sent 0 (none) on every
