@@ -3,7 +3,6 @@ package hmgapi.mods.wireless.dipo;
 import android.bluetooth.BluetoothDevice;
 import android.content.Context;
 import android.content.Intent;
-import android.content.SharedPreferences;
 import android.media.AudioManager;
 import android.net.wifi.WifiConfiguration;
 import android.os.Handler;
@@ -82,7 +81,6 @@ final class Bridge {
             wdCheck();
         }
     };
-    static final String PREFS = "hmgapi_wireless_cp";
 
     private Bridge() {}
 
@@ -215,7 +213,7 @@ final class Bridge {
                     i.putExtra("serial", addr);
                     c.sendBroadcast(i);
                     log("BT_ATTACHED sent for " + addr);
-                    sWd.attached(now(), known(addr));
+                    sWd.attached(now());
                     wdSchedule("waiting for the session");
                 } catch (Throwable t) {
                     sSession = false;
@@ -259,7 +257,6 @@ final class Bridge {
                 if (sWd.attempts > 0) log("watchdog: session back after " + sWd.attempts + " attempt(s)");
                 sWd.sessionStarted(now());
                 wdSchedule(null);
-                if (wireless) remember(sPhone);
             }
         });
     }
@@ -306,7 +303,8 @@ final class Bridge {
                 public void run() {
                     boolean present = ours && phonePresent();
                     sWd.sessionEnded(now(), bridged, present);
-                    wdSchedule(!ours ? null : present ? sWd.reason : "the phone isn't connected over Bluetooth, nothing to do");
+                    wdSchedule(!ours ? null : !present ? "the phone isn't connected over Bluetooth, nothing to do"
+                            : sWd.armed ? sWd.reason : null);
                 }
             });
         } catch (Throwable t) {
@@ -454,10 +452,10 @@ final class Bridge {
                 return;
             }
             boolean spp = m.IbtcmIsSppConnectedDevice(addr);
-            Watchdog.Action a = sWd.check(now(), spp, inCall(), phonePresent(), !wifiJoined());
+            Watchdog.Action a = sWd.check(now(), spp, inCall(), phonePresent(), !wifiClientOn());
             switch (a) {
                 case SPP_CONNECT:
-                    log("watchdog: attempt " + sWd.attempts + " (" + sWd.reason + "): IbtcmSppConnect(" + addr + ") = "
+                    log("watchdog: attempt " + sWd.attempts + " (" + sWd.reason + "): IbtcmSppConnect(" + mask(addr) + ") = "
                             + m.IbtcmSppConnect(addr));
                     break;
                 case REIDENTIFY:
@@ -474,7 +472,7 @@ final class Bridge {
                     onSppUp(addr);
                     break;
                 case WIFI_BUSY:
-                    log("watchdog: the head unit's Wi-Fi is joined to a network, so its hotspot is off: not restarting CarPlay ("
+                    log("watchdog: the head unit's Wi-Fi is on as a client, so its hotspot is off: not restarting CarPlay ("
                             + sWd.reason + ")");
                     break;
                 case GIVE_UP:
@@ -503,8 +501,11 @@ final class Bridge {
         }
     }
 
-    /** the head unit's Wi-Fi is on as a client (e.g. for adb over Wi-Fi) and its hotspot is off */
-    static boolean wifiJoined() {
+    /**
+     * the head unit's Wi-Fi is switched on as a client (e.g. for adb over Wi-Fi), whether or
+     * not it has joined a network, and its hotspot is off: on this unit the two don't run together
+     */
+    static boolean wifiClientOn() {
         try {
             Object wifi = context.getSystemService(Context.WIFI_SERVICE);
             if (wifi == null) return false;
@@ -522,6 +523,11 @@ final class Bridge {
         }
     }
 
+    /** a Bluetooth address for the log: the last two bytes only */
+    static String mask(String addr) {
+        return addr == null || addr.length() < 5 ? String.valueOf(addr) : "XX:XX:XX:XX:" + addr.substring(addr.length() - 5);
+    }
+
     /** a phone call is on (the car's or CarPlay's): no reconnecting then */
     static boolean inCall() {
         try {
@@ -530,26 +536,6 @@ final class Bridge {
             return mode == AudioManager.MODE_IN_CALL || mode == AudioManager.MODE_IN_COMMUNICATION || mode == AudioManager.MODE_RINGTONE;
         } catch (Throwable t) {
             return false;
-        }
-    }
-
-    /** this phone had a wireless CarPlay session here (kept across restarts) */
-    static boolean known(String addr) {
-        try {
-            return addr != null && context.getSharedPreferences(PREFS, 0).getBoolean(addr.toUpperCase(), false);
-        } catch (Throwable t) {
-            return false;
-        }
-    }
-
-    static void remember(String addr) {
-        try {
-            if (addr == null || known(addr)) return;
-            SharedPreferences.Editor e = context.getSharedPreferences(PREFS, 0).edit();
-            e.putBoolean(addr.toUpperCase(), true);
-            e.apply();
-        } catch (Throwable t) {
-            error("remember", t);
         }
     }
 

@@ -12,10 +12,14 @@ package hmgapi.mods.wireless.dipo;
  * carries on) until the driver leaves CarPlay and comes back, which rebuilds the
  * renderer and starts a fresh stream. Seen on wireless sessions only (US EV6 260507).
  *
- * What: a key frame after a decoder failure or a screen timeout, and on wireless a
- * key frame at least every period (setting picture_period, PERIOD_MS without one), for
- * a decoder that hangs without reporting anything. Never more than one every MIN_GAP_MS: key frames are large, and asking
- * for them faster over a slow Wi-Fi link would make a stall worse.
+ * What: a key frame after a decoder failure or a screen timeout. Optionally (setting
+ * picture_periodic, off by default), on wireless also a key frame at least every period, for
+ * a decoder that hangs without reporting anything: the period is setting picture_period
+ * (5 s by default in settings.json), PERIOD_MS only when a caller gives none. Off by default
+ * because each one is a bitrate spike over Wi-Fi, and a 2 h drive with it off (US EV6,
+ * 2026-11-08) had no freeze: the recovery on a failure or timeout was enough. Never more than
+ * one every MIN_GAP_MS: key frames are large, and asking for them faster over a slow Wi-Fi
+ * link would make a stall worse.
  */
 final class Keyframes {
     static final long MIN_GAP_MS = 2000;

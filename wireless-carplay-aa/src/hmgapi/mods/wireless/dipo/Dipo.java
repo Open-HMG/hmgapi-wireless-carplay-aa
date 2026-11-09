@@ -46,9 +46,6 @@ import hmgapi.hook.Points;
  *
  * Picture ("picture"): asks the phone for a new key frame when the CarPlay picture
  * stalls, which the stock app never does (Keyframes has the why and the when).
- *
- * Diagnostic log ("debug_log", off by default): DebugLog keeps a capped logcat of
- * DiPO and the rest of the unit (noise tags dropped) in DiPO's data folder.
  */
 public final class Dipo {
     private Dipo() {}
@@ -97,13 +94,12 @@ public final class Dipo {
         }
         if (m.settingBoolean("picture", true)) {
             try {
-                picture(m.settingBoolean("picture_periodic", true), periodMs(m.settingString("picture_period", "5")));
+                picture(m.settingBoolean("picture_periodic", false), periodMs(m.settingString("picture_period", "5")));
             } catch (Throwable t) {
                 // its own points only: turn-by-turn and the bridge still start
                 error("CarPlay picture: off", t);
             }
         }
-        if (m.settingBoolean("debug_log", false)) DebugLog.start(a.context);
         if (tbt) turnByTurn();
         if (bridge) bridge();
         if (!tbt && !bridge) return;
@@ -283,7 +279,9 @@ public final class Dipo {
      */
     private static void picture(boolean periodic, long period) {
         final ClassLoader cl = app.classLoader;
-        for (String id : new String[] { "dipo.carplay.force_key_frame", "dipo.carplay.decode_failure", "dipo.carplay.screen_timeout" }) {
+        // every point it hooks, before it starts anything: no half-hooked picture thread
+        for (String id : new String[] { "dipo.carplay.force_key_frame", "dipo.carplay.decode_failure", "dipo.carplay.screen_timeout",
+                "dipo.carplay.session_started", "dipo.carplay.session_finalized" }) {
             if (!Points.has(id)) {
                 log("CarPlay picture: off on this car (" + id + " not mapped)");
                 return;
@@ -294,71 +292,79 @@ public final class Dipo {
         t.start();
         pictureHandler = new Handler(t.getLooper());
         keyframes = new Keyframes(periodic, period);
-        mod.hook(cl, "dipo.carplay.session_started", new MethodHook() {
-            @Override
-            protected void afterHookedMethod(final Param p) {
-                final Object cp = p.thisObject;
-                final int transport = (Integer) p.args[0];
-                pictureHandler.post(new Runnable() {
-                    @Override
-                    public void run() {
-                        cpService = cp;
-                        keyframes.sessionStarted(transport);
-                        keyframes.summary();
-                        results.clear();
-                        firstPeriodic = true;
-                        pictureHandler.removeCallbacks(TICK);
-                        pictureHandler.removeCallbacks(SUMMARY);
-                        log("CarPlay picture: session started, " + (transport == 1 ? "wireless" : "wired (transport " + transport + ")")
-                                + (keyframes.ticking() ? ", a key frame every " + keyframes.period / 1000 + " s" : ", key frames on a stall only"));
-                        if (keyframes.ticking()) pictureHandler.postDelayed(TICK, keyframes.period);
-                        pictureHandler.postDelayed(SUMMARY, SUMMARY_MS);
-                    }
-                });
-            }
-        });
-        mod.hook(cl, "dipo.carplay.session_finalized", new MethodHook() {
-            @Override
-            protected void afterHookedMethod(Param p) {
-                pictureHandler.post(new Runnable() {
-                    @Override
-                    public void run() {
-                        keyframes.sessionEnded();
-                        pictureHandler.removeCallbacks(TICK);
-                        pictureHandler.removeCallbacks(SUMMARY);
-                        logSummary("session ended");
-                    }
-                });
-            }
-        });
-        mod.hook(cl, "dipo.carplay.decode_failure", new MethodHook() {
-            @Override
-            protected void afterHookedMethod(final Param p) {
-                final Object cp = p.thisObject;
-                final int type = (Integer) p.args[0];
-                pictureHandler.post(new Runnable() {
-                    @Override
-                    public void run() {
-                        cpService = cp;
-                        int before = keyframes.failures;
-                        if (keyframes.decodeFailure(type, now())) forceKeyFrame("decoder failure type " + type + " (" + (before + 1) + " since the last key frame)");
-                    }
-                });
-            }
-        });
-        mod.hook(cl, "dipo.carplay.screen_timeout", new MethodHook() {
-            @Override
-            protected void afterHookedMethod(final Param p) {
-                final Object cp = p.thisObject;
-                pictureHandler.post(new Runnable() {
-                    @Override
-                    public void run() {
-                        cpService = cp;
-                        if (keyframes.screenTimeout(now())) forceKeyFrame("screen timeout");
-                    }
-                });
-            }
-        });
+        try {
+            mod.hook(cl, "dipo.carplay.session_started", new MethodHook() {
+                @Override
+                protected void afterHookedMethod(final Param p) {
+                    final Object cp = p.thisObject;
+                    final int transport = (Integer) p.args[0];
+                    pictureHandler.post(new Runnable() {
+                        @Override
+                        public void run() {
+                            cpService = cp;
+                            keyframes.sessionStarted(transport);
+                            keyframes.summary();
+                            results.clear();
+                            firstPeriodic = true;
+                            pictureHandler.removeCallbacks(TICK);
+                            pictureHandler.removeCallbacks(SUMMARY);
+                            log("CarPlay picture: session started, " + (transport == 1 ? "wireless" : "wired (transport " + transport + ")")
+                                    + (keyframes.ticking() ? ", a key frame every " + keyframes.period / 1000 + " s" : ", key frames on a stall only"));
+                            if (keyframes.ticking()) pictureHandler.postDelayed(TICK, keyframes.period);
+                            pictureHandler.postDelayed(SUMMARY, SUMMARY_MS);
+                        }
+                    });
+                }
+            });
+            mod.hook(cl, "dipo.carplay.session_finalized", new MethodHook() {
+                @Override
+                protected void afterHookedMethod(Param p) {
+                    pictureHandler.post(new Runnable() {
+                        @Override
+                        public void run() {
+                            keyframes.sessionEnded();
+                            pictureHandler.removeCallbacks(TICK);
+                            pictureHandler.removeCallbacks(SUMMARY);
+                            logSummary("session ended");
+                        }
+                    });
+                }
+            });
+            mod.hook(cl, "dipo.carplay.decode_failure", new MethodHook() {
+                @Override
+                protected void afterHookedMethod(final Param p) {
+                    final Object cp = p.thisObject;
+                    final int type = (Integer) p.args[0];
+                    pictureHandler.post(new Runnable() {
+                        @Override
+                        public void run() {
+                            cpService = cp;
+                            int before = keyframes.failures;
+                            if (keyframes.decodeFailure(type, now())) forceKeyFrame("decoder failure type " + type + " (" + (before + 1) + " since the last key frame)");
+                        }
+                    });
+                }
+            });
+            mod.hook(cl, "dipo.carplay.screen_timeout", new MethodHook() {
+                @Override
+                protected void afterHookedMethod(final Param p) {
+                    final Object cp = p.thisObject;
+                    pictureHandler.post(new Runnable() {
+                        @Override
+                        public void run() {
+                            cpService = cp;
+                            if (keyframes.screenTimeout(now())) forceKeyFrame("screen timeout");
+                        }
+                    });
+                }
+            });
+        } catch (RuntimeException e) {
+            t.quit();   // the hooks already set post to a stopped thread, which drops their work
+            throw e;
+        } catch (Error e) {
+            t.quit();
+            throw e;
+        }
         log("CarPlay picture: key frame on a stall" + (periodic ? ", and every " + keyframes.period / 1000 + " s on wireless" : ""));
     }
 

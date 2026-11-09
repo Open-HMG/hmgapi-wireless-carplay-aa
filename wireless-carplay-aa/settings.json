@@ -55,7 +55,7 @@
       "default": true,
       "title": "Restart wireless CarPlay when it doesn't come back",
       "apply": "restart",
-      "description": "When a wireless session ends while the iPhone is still connected over Bluetooth and the phone doesn't start it again, the car redoes the Bluetooth handshake (up to 5 times, waiting longer each time). Never during a call, a running session or USB CarPlay, or while the head unit's Wi-Fi is joined to a network (its hotspot is off then). A phone that hasn't used wireless CarPlay here yet (its first setup) is left alone."
+      "description": "When a wireless session ends while the iPhone is still connected over Bluetooth and the phone doesn't start it again, the car redoes the Bluetooth handshake (up to 5 times, waiting longer each time). Only after an abnormal end (a session that dies within 2 seconds, or the phone's Bluetooth dropping and coming back), so a session you end yourself stays ended. Never during a call, a running session or USB CarPlay, or while the head unit's Wi-Fi is on as a client (its hotspot is off then). A phone that hasn't used wireless CarPlay here yet (its first setup) is left alone."
     },
     {
       "key": "audio",
@@ -75,7 +75,7 @@
     {
       "key": "picture_periodic",
       "type": "toggle",
-      "default": true,
+      "default": false,
       "title": "On wireless CarPlay, also ask for a full frame regularly",
       "apply": "restart",
       "description": "For a picture that freezes without the decoder reporting it. Caps a freeze at the interval below, for one extra full frame each time."
@@ -121,14 +121,6 @@
       "apply": "restart",
       "title": "USB drives and hubs don't start wired Android Auto",
       "description": "A hook in the Android Auto app (no files changed). Without it, a USB drive can block wireless Android Auto until the head unit restarts."
-    },
-    {
-      "key": "debug_log",
-      "type": "toggle",
-      "default": false,
-      "title": "Diagnostic log (test builds)",
-      "apply": "restart",
-      "description": "Keeps a log of the CarPlay app and the unit in the CarPlay app's data folder, 32 MB at most, only with 200 MB free. For bug reports; turn it off and delete the folder afterwards."
     }
   ]
 }
