@@ -74,9 +74,9 @@ until the SDK has the point. See [HMG-API's docs/mod-repos.md](https://github.co
 ## Building and testing
 
 CI runs HMG-API's mod workflow, with the HMG-API mod SDK pinned in `hmgapi-sdk.json`
-(until HMG-API 1.0.3, a HMG-API commit the SDK is built from). On your computer, with the
-SDK unpacked in `$HMGAPI_SDK` (`./build.sh sdk` in HMG-API at that commit) and the
-Android SDK in `ANDROID_HOME`:
+(a HMG-API release's `hmgapi-mod-sdk-<version>.zip`, or a HMG-API commit it's built from).
+On your computer, with that SDK unpacked in `$HMGAPI_SDK` (or `./build.sh sdk` in HMG-API
+at a commit) and the Android SDK in `ANDROID_HOME`:
 
 ```
 $HMGAPI_SDK/bin/build-mod.sh wireless-carplay-aa out/build/wireless-carplay-aa
@@ -89,6 +89,9 @@ HMGAPI_SDK=$HMGAPI_SDK sh wireless-carplay-aa/tools/aaturns/test.sh
 ```
 ```
 HMGAPI_SDK=$HMGAPI_SDK sh wireless-carplay-aa/tools/cpturns/test.sh
+```
+```
+sh wireless-carplay-aa/tools/watchdog/test.sh
 ```
 ```
 HMGAPI_SDK=$HMGAPI_SDK sh wireless-carplay-aa/tools/recipes/test.sh

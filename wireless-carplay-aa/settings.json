@@ -9,6 +9,32 @@
       "apply": "rebuild"
     },
     {
+      "key": "tbt_no_icon",
+      "type": "choice",
+      "default": "straight",
+      "title": "CarPlay turns with no arrow",
+      "apply": "restart",
+      "description": "A maneuver the cluster has no icon for, after the nearest one is tried (the start of a route, say). Clearing the turn or an empty turn shows the cluster's spinner and hides the distance.",
+      "options": [
+        {
+          "value": "straight",
+          "title": "Straight arrow with the distance"
+        },
+        {
+          "value": "clear",
+          "title": "Clear the turn from the cluster"
+        },
+        {
+          "value": "skip",
+          "title": "Leave the last turn up (2.1.0)"
+        },
+        {
+          "value": "no_info",
+          "title": "Send an empty turn (can show a spinner)"
+        }
+      ]
+    },
+    {
       "key": "tbt_standard",
       "type": "toggle",
       "default": false,
@@ -24,11 +50,61 @@
       "apply": "rebuild"
     },
     {
+      "key": "bridge_watchdog",
+      "type": "toggle",
+      "default": true,
+      "title": "Restart wireless CarPlay when it doesn't come back",
+      "apply": "restart",
+      "description": "When a wireless session ends while the iPhone is still connected over Bluetooth and the phone doesn't start it again, the car redoes the Bluetooth handshake (up to 5 times, waiting longer each time). Only after an abnormal end (the Wi-Fi link failing under a running session, or a session that dies within 2 seconds), so a session you end yourself stays ended. Never during a call, a running session or USB CarPlay, or while the head unit's Wi-Fi is on as a client (its hotspot is off then). A phone that hasn't used wireless CarPlay here yet (its first setup) is left alone."
+    },
+    {
       "key": "audio",
       "type": "toggle",
       "default": true,
       "title": "CarPlay music and Siri over Wi-Fi (AAC, Opus)",
       "apply": "rebuild"
+    },
+    {
+      "key": "picture",
+      "type": "toggle",
+      "default": true,
+      "title": "CarPlay picture recovers from a freeze",
+      "apply": "restart",
+      "description": "A hook in the CarPlay app (no files changed). When the video decoder reports a failure or the screen stream times out, asks the phone for a new full frame, as leaving CarPlay and coming back does, without the flicker."
+    },
+    {
+      "key": "picture_periodic",
+      "type": "toggle",
+      "default": false,
+      "title": "On wireless CarPlay, also ask for a full frame regularly",
+      "apply": "restart",
+      "description": "For a picture that freezes without the decoder reporting it. Caps a freeze at the interval below, for one extra full frame each time."
+    },
+    {
+      "key": "picture_period",
+      "type": "choice",
+      "default": "5",
+      "title": "Full frame interval",
+      "apply": "restart",
+      "description": "How often the regular full frame is asked for. node-CarPlay uses 5 seconds.",
+      "options": [
+        {
+          "value": "5",
+          "title": "5 seconds"
+        },
+        {
+          "value": "10",
+          "title": "10 seconds"
+        },
+        {
+          "value": "20",
+          "title": "20 seconds"
+        },
+        {
+          "value": "30",
+          "title": "30 seconds"
+        }
+      ]
     },
     {
       "key": "menu",

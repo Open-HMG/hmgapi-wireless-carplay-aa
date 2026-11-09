@@ -1,7 +1,7 @@
 # The mod's CI: HMG-API's mod workflow (floor and hook points, build, tests, script check,
 # packages with a throwaway key), pinned to the same HMG-API as hmgapi-sdk.json.
-# Until HMG-API 1.0.3 carries the SDK, both are a HMG-API commit SHA; from 1.0.3, the
-# release (@v1.0.3 here, {"version", "sha256"} there). Change them together.
+# Both name a HMG-API release that carries the SDK (@v1.1.0-beta.1 here, {"version",
+# "sha256"} there), or a HMG-API commit SHA in both. Change them together.
 name: CI
 
 on:
@@ -22,4 +22,4 @@ jobs:
       - run: python3 .github/check-pin.py
 
   mod:
-    uses: Open-HMG/HMG-API/.github/workflows/mod.yml@a527d1f467117544bc4051e0b9f1e2882d7396aa
+    uses: Open-HMG/HMG-API/.github/workflows/mod.yml@v1.1.0-beta.1

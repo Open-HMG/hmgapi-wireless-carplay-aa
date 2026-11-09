@@ -79,6 +79,52 @@ the turn itself.
 - The turns ahead get the same icons as the turn itself: ramps and forks 172-174, exits
   81/82/86, ferries 176, destinations 112-114, straight for the rest.
 
+## CarPlay
+
+CarPlay's turn-by-turn (`dipo/CpTurns`) sends the projection icons only. The phone gives
+each maneuver an iAP2 ManeuverType (the same numbers as CarPlay's `CPManeuverType`), a
+junction type and an exit angle (degrees, negative to the left). A table of exact matches
+picks the icon first; anything it doesn't match gets the nearest icon the car has, the same
+ones Android Auto's turns use:
+
+| CarPlay maneuver | Icon |
+|---|---|
+| off ramp (8), no side | 86 |
+| highway off ramp left / right (22 / 23), any angle | 82 / 81 |
+| on ramp (9), change highway (51) | 172 |
+| keep left / right (13 / 14), change highway left / right (52 / 53) | 174 / 173 |
+| roundabout exits (28-46), enter/exit (6, 7), any maneuver at a roundabout junction | the exit angle's nearest of 96 97 99 100 102 104 105 107 |
+| left / right / sharp / slight turns at an angle the table doesn't have | 66-71 by the angle |
+| destinations (10, 12, 27; 24 / 25) | 112 (114 / 113) |
+| the departure (11), a type Apple adds later | setting `tbt_no_icon`: straight (65) with the distance by default |
+
+The turns ahead (`updateTPTurnList`) and the HUD list get the same icons, and never 64.
+
+Clearing the turn while guidance is on is as bad as 64: on a US EV6 (260507, 2026-11-08)
+the cluster drew its spinner for the whole of each stretch whose next maneuver the table
+didn't match, and the distance and trip went with it. On Rt 2 and I-95 that was every
+highway exit and keep left/right (types 8, 13, 14, up to 17 miles), and every rotary
+(28-30 at angles like -54, 61, -127). City turns (types 1, 2, 3, 47, 49, 50, 24, 25) were
+in the table. `tbt_no_icon` keeps "clear", "skip" (2.1.0) and "no_info" (icon 1) as
+choices.
+
+## When a CarPlay route ends
+
+While a phone guides, the mod skips the car navigation's own turn-by-turn calls to the
+cluster (`navi.tbt`), so they don't fight the phone's. With CarPlay that now lasts only
+while a route is on: `CpTurns` tells the car navigation's process when the route starts and
+ends (broadcast `hmgapi.mods.wireless.CP_ROUTE`, sent only to `com.mnsoft.navi` and only
+from apps holding `BLUETOOTH_PRIVILEGED`), and when it ends it clears the destination name.
+
+Letting the calls through again isn't enough: the car navigation sends its compass and
+"no route" state once, when it changes, not again. So the mod keeps the last call of each
+cluster method it skipped (`update_tbt_info`, the `update_tbt_sub_info` family,
+`update_remain_dis`, `update_tp_crossroad_name`) and, 1 s after the route ends, sends them
+again. On a US EV6 (260507, 2026-11-08) the cluster kept the spinner after a CarPlay route
+ended until this; with it, the compass is back within about a second.
+
+Android Auto's end of route isn't handled this way yet.
+
 ## Lanes
 
 The car navigation keeps running under a phone's guidance with no route, and sends the
