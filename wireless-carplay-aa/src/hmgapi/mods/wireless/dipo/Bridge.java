@@ -64,6 +64,10 @@ final class Bridge {
     static ClassLoader cl;
     static Context context;
     private static int sCpFail, sCpSent;
+    /** when a CarPlay-channel iAP2 send last failed (now()), -1: not in this session */
+    private static volatile long sCpFailAt = -1;
+    /** the watchdog sent BT_ATTACHED again: the old Bluetooth session's disconnect is still to come */
+    private static volatile boolean sReattach;
     private static Handler sHandler, sCpTx;
     private static Method sNativeSend;
     private static final ArrayList<byte[]> sPendingIn = new ArrayList<byte[]>();
@@ -250,6 +254,7 @@ final class Bridge {
     static void onCpSessionStarted(int transport) {
         final boolean wireless = transport == 1 && !sUsb;
         sCpWireless = wireless;
+        sCpFailAt = -1;
         log("CarPlay session started transport=" + transport + " wireless=" + sCpWireless);
         handler().post(new Runnable() {
             @Override
@@ -286,7 +291,11 @@ final class Bridge {
 
     static void onCpSessionFinalized(int type) {
         try {
-            log("CarPlay session finalized type=" + type + " cpClient=" + sCpClient);
+            final long endAt = now(), failAt = sCpFailAt;
+            // a dropped Wi-Fi link fails the CarPlay channel's sends as it ends; a clean end doesn't
+            final boolean abrupt = failAt >= 0 && endAt - failAt <= Watchdog.ABRUPT_MS;
+            log("CarPlay session finalized type=" + type + " cpClient=" + sCpClient
+                    + (abrupt ? ", abrupt (a channel send failed " + (endAt - failAt) + " ms before)" : ""));
             boolean client = sCpClient, wireless = sCpWireless;
             sCpWireless = false;
             sCpClient = false;
@@ -302,8 +311,10 @@ final class Bridge {
                 @Override
                 public void run() {
                     boolean present = ours && phonePresent();
-                    sWd.sessionEnded(now(), bridged, present);
-                    wdSchedule(!ours ? null : !present ? "the phone isn't connected over Bluetooth, nothing to do"
+                    sWd.sessionEnded(endAt, bridged, abrupt && ours, present);
+                    wdSchedule(!ours ? null
+                            : sWd.awaitingPhone ? sWd.reason + "; the phone isn't on Bluetooth, waiting for it to come back"
+                            : !present ? "the phone isn't connected over Bluetooth, nothing to do"
                             : sWd.armed ? sWd.reason : null);
                 }
             });
@@ -404,6 +415,7 @@ final class Bridge {
                         if (sCpSent <= 3 || sCpSent % 200 == 0) log("CarPlay-channel iAP2 sent " + b.length + " bytes (#" + sCpSent + ")");
                     } else {
                         sCpFail++;
+                        sCpFailAt = now();
                         if (sCpFail <= 5 || sCpFail % 50 == 0) log("CarPlay-channel iAP2 send failed rc=" + rc + " len=" + b.length);
                     }
                 } catch (Throwable t) {
@@ -469,6 +481,7 @@ final class Bridge {
                     log("watchdog: attempt " + sWd.attempts + " (" + sWd.reason + "): iAP2 over Bluetooth again (identification)");
                     // BT_ATTACHED again: the iAP2 server stops the old Bluetooth session and starts a new one
                     sSession = false;
+                    sReattach = true;
                     onSppUp(addr);
                     break;
                 case WIFI_BUSY:
@@ -678,6 +691,7 @@ final class Bridge {
                     }
                 });
             }
+            else if (component == COMPONENT_BT_CARPLAY) sReattach = false; // the old one's disconnect came first (always, seen)
             else if (component == COMPONENT_CARPLAY_CLIENT) onCpClientConnected();
         }
 
@@ -688,7 +702,12 @@ final class Bridge {
                 sUsb = false;
                 onUsbGone();
             } else if (component == COMPONENT_BT_CARPLAY) {
-                sSession = false;
+                // after the watchdog's BT_ATTACHED the old session's disconnect comes after the new attach
+                // (seen 1 s later): it isn't the new session's, which would then drop every iAP2 byte
+                if (sReattach) {
+                    sReattach = false;
+                    log("iAP2: the old Bluetooth session's disconnect, the new one is kept");
+                } else sSession = false;
             } else if (component == COMPONENT_CARPLAY_CLIENT) {
                 sCpConnected = false;
             }

@@ -16,24 +16,31 @@ package hmgapi.mods.wireless.dipo;
  *
  * Rules, after open receivers that do this (DiPlay's startup retry budget and first-TCP
  * watchdog, playport's supervisor, WirelessAndroidAutoDongle, aa-proxy-rs):
- *  - Only after an abnormal end, never a normal one: the car can't tell a session the user
- *    ended (Disconnect on the phone, which keeps Bluetooth for calls) from a drop, so a
- *    normal end, or iAP2 over Bluetooth with no session, is left alone. Abnormal ("armed"):
- *    a session that ends within PHANTOM_MS, before its iAP2 channel came up, or the phone's
- *    Bluetooth reconnecting within BOUNCE_MS of an end.
+ *  - Only after an abnormal end, never a normal one, so a session the user ended (Disconnect
+ *    on the phone, which keeps Bluetooth for calls), or iAP2 over Bluetooth with no session,
+ *    is left alone. Abnormal ("armed"), decided again at each end: a session that ends within
+ *    PHANTOM_MS, before its iAP2 channel came up, or an abrupt end, where the CarPlay
+ *    channel's sends failed as it ended (ABRUPT_MS). On the EV6 (2026-11-08, 22 ends) the
+ *    drop and eight ends as the head unit powered off were abrupt (the failure 0-10 ms
+ *    before the end); the 12 normal ends had no failure for 15 minutes or more. The phone's Bluetooth (HFP) comes back
+ *    about 6 s after every end, a normal one too, so that alone arms nothing.
  *  - Never touch a session that is up; one attempt at a time (one deadline).
  *  - Only for a phone that's still connected over Bluetooth (HFP), so a phone that left,
- *    turned Bluetooth off or is in airplane mode is left alone; not on USB; not during a call;
+ *    turned Bluetooth off or is in airplane mode is left alone; after an abnormal end with the
+ *    phone off HFP, it waits BOUNCE_MS for the phone to come back; not on USB; not during a call;
  *    not while the head unit's Wi-Fi is on as a client (its hotspot is off then, so no
  *    session can start: someone chose that, like a user disconnect).
  *  - Each attempt restarts the Bluetooth iAP2 session, which would cut off a phone that's
  *    already starting one, so the wait is longer than any normal start seen: from iAP2 over
  *    Bluetooth up to the session took 2.3-8.4 s on the EV6, 11.1 s once just after a boot.
  *  - Backoff 2 s doubling to 30 s, at most MAX_ATTEMPTS, then it gives up until the phone
- *    connects again; the count starts over after a session that ran STABLE_MS.
+ *    connects again (a session ending doesn't start it over); the count starts over after a
+ *    session that ran STABLE_MS.
  */
 final class Watchdog {
     static final long PHANTOM_MS = 2000, BOUNCE_MS = 15000, STABLE_MS = 60000;
+    /** a CarPlay-channel send failure this close to a session's end makes it abrupt (seen: 0-10 ms) */
+    static final long ABRUPT_MS = 1000;
     /** from iAP2 over Bluetooth up to the CarPlay session, longer than any normal start */
     static final long START_MS = 12000;
     /** from a session's end to the phone opening iAP2 over Bluetooth again (normal: 3-9 s) */
@@ -46,6 +53,8 @@ final class Watchdog {
     /** Why the watchdog acts (for the log) */
     String reason = "";
     boolean sessionUp, armed, gaveUp;
+    /** an abnormal end while the phone was off HFP: armed if it comes back within BOUNCE_MS */
+    boolean awaitingPhone;
     int attempts;
     /** when check() should run next; 0: nothing to watch */
     long deadline;
@@ -66,30 +75,42 @@ final class Watchdog {
     }
 
     /**
-     * The CarPlay session ended. bridged: its iAP2 channel came up (cpClient). phonePresent:
-     * the phone is still connected over Bluetooth (HFP).
+     * The CarPlay session ended. bridged: its iAP2 channel came up (cpClient). abrupt: the
+     * CarPlay channel's sends failed as it ended. phonePresent: the phone is still connected
+     * over Bluetooth (HFP).
      */
-    void sessionEnded(long t, boolean bridged, boolean phonePresent) {
+    void sessionEnded(long t, boolean bridged, boolean abrupt, boolean phonePresent) {
         long ran = sessionUp ? t - sessionStart : 0;
         sessionUp = false;
         lastEnd = t;
-        if (ran >= STABLE_MS || gaveUp) {
+        if (ran >= STABLE_MS) {
             gaveUp = false;
             attempts = 0;
-            armed = false;
             notBefore = 0;
         }
-        if (!phonePresent) {
-            stop();
-            return;
-        }
+        // each end on its own: a session the watchdog brought back, then ended by the user, stays ended
+        armed = false;
+        awaitingPhone = false;
+        deadline = 0;
         if (ran < PHANTOM_MS && !bridged) {
             armed = true;
             reason = "a session ended after " + ran + " ms, before its iAP2 channel";
+        } else if (abrupt) {
+            armed = true;
+            reason = "the session ended abruptly after " + (ran / 1000) + " s (its CarPlay channel failed)";
         }
-        // a normal end may be the user's: nothing to do unless something arms the watchdog.
-        // Armed: the phone opens iAP2 over Bluetooth again by itself, normally; if not, ask.
-        deadline = armed ? Math.max(t + ATTACH_MS, notBefore) : 0;
+        if (!armed || gaveUp) {
+            // a normal end may be the user's: left alone. Given up: until the phone connects again
+            armed = false;
+            return;
+        }
+        if (!phonePresent) {
+            armed = false;
+            awaitingPhone = true;
+            return;
+        }
+        // the phone opens iAP2 over Bluetooth again by itself, normally; if not, ask
+        deadline = Math.max(t + ATTACH_MS, notBefore);
     }
 
     /** the phone connected over Bluetooth (HFP) */
@@ -100,17 +121,19 @@ final class Watchdog {
             attempts = 0;
             notBefore = 0;
         }
-        if (!sessionUp && lastEnd >= 0 && t - lastEnd <= BOUNCE_MS && !armed) {
+        if (awaitingPhone && !sessionUp && t - lastEnd <= BOUNCE_MS) {
             armed = true;
-            reason = "the phone's Bluetooth reconnected " + (t - lastEnd) + " ms after the session ended";
+            reason += ", the phone back on Bluetooth " + (t - lastEnd) + " ms later";
             deadline = Math.max(t + START_MS, notBefore);
         }
+        awaitingPhone = false;
     }
 
     /** USB CarPlay, the bridge off, or the phone gone: nothing to watch */
     void stop() {
         deadline = 0;
         armed = false;
+        awaitingPhone = false;
     }
 
     Action check(long t, boolean sppUp, boolean inCall, boolean phonePresent) {
