@@ -206,6 +206,40 @@ public final class AaTurnsTest {
         stdCase("457 m: in, bar 90", TURN, RIGHT, 67, 90, 457, "13 90 90");
         stdCase("458 m: out, the icon, bar off", TURN, RIGHT, 67, 90, 458, "67 90 0");
         stdCase("no distance yet: the icon, bar off", TURN, RIGHT, 67, 90, -1, "67 90 0");
+
+        // rerouting (status 3): "Recalculating..." (10) with standard turns, after 1 s
+        Handler rh = new Handler();
+        AaTurns rr = new AaTurns(new android.content.Context(), c, rh);
+        rr.standardTurns = true;
+        rr.status(1);
+        rr.nextTurn("Elm St", RIGHT, TURN, -1, 0);
+        c.calls.clear();
+        rr.status(3);
+        expect("reroute: nothing at once");
+        check("reroute: Recalculating waits 1 s", rh.delayed == rr.rerouteShow);
+        rr.status(1);
+        check("a short reroute: nothing shown, the wait cancelled", rh.delayed == null && c.calls.isEmpty());
+        rr.status(3);
+        rh.delayed.run();
+        expect("reroute over 1 s: Recalculating (10)", "tbt 10 65535 0.0 0.0 -3 0 15 0 -1");
+        rr.nextTurnDistance(300, 20, 186, MILES_P1);
+        expect("a distance during the reroute: Recalculating stays");
+        rh.delayed = null;   // the stand-in keeps a run runnable
+        rr.status(3);
+        check("rerouting again while it shows: no second wait", rh.delayed == null);
+        rr.nextTurn("Oak Ave", LEFT, TURN, -1, 0);
+        expect("the new route's first turn replaces it", "road [Oak Ave]", "tbt 13 0 270.0 0.186 0 0 2 60 0",
+                "hud f201460000" + utf16("Oak Ave"), "2c 2 2 0 0 0 0 0 0 0");
+        rr.status(3);
+        rh.delayed.run();
+        c.calls.clear();
+        rr.status(1);
+        expect("reroute over with the same route: the turn comes back", "tbt 13 0 270.0 0.186 0 0 2 60 0", "2c 2 2 0 0 0 0 0 0 0");
+        Handler oh = new Handler();
+        AaTurns off = new AaTurns(new android.content.Context(), c, oh);
+        off.status(1);
+        off.status(3);
+        check("standard turns off: no Recalculating", oh.delayed == null);
         System.exit(fail);
     }
 

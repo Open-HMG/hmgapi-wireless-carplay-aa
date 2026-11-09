@@ -46,6 +46,9 @@ final class AaTurns {
     static final int DEST_AHEAD = 112, DEST_RIGHT = 113, DEST_LEFT = 114;
     /** how far before a maneuver the car's navigation switches to its turn format and starts the bar (m) */
     static final int GUIDE_WINDOW = 457;
+    /** Android Auto's rerouting status; the cluster's "Recalculating..." type; how long a reroute runs before it shows */
+    static final int STATUS_REROUTING = 3, TYPE_RECALCULATING = 10;
+    static final long REROUTE_SHOW_MS = 1000;
 
     final Context context;
     final Cluster cluster;
@@ -69,6 +72,8 @@ final class AaTurns {
      * car is in it (with no side and no angle). -1: none.
      */
     int roundaboutType = -1, roundaboutDir;
+    /** a reroute is going on; "Recalculating..." is up (standard turns only) */
+    boolean rerouting, rerouteShown;
     /**
      * Setting tbt_standard (off by default): the next maneuver as the car's own navigation sends it
      * (standard(), from its cluster code: libExSLNavi, Navi::CLUSTER::Turn::CInformation,
@@ -138,6 +143,11 @@ final class AaTurns {
             aheadExit[k] = (number >> 8) & 0xff;
             aheadOk[k] = false;
             return;
+        }
+        if (rerouting) {   // the new route's first turn
+            rerouting = false;
+            rerouteShown = false;
+            handler.removeCallbacks(rerouteShow);
         }
         hudFresh = false;
         boolean first = road == null;
@@ -215,10 +225,18 @@ final class AaTurns {
     }
 
     void status(int s) {
-        if (s == 1 || s == 3) {   // active, rerouting
+        if (s == 1 || s == STATUS_REROUTING) {   // active, rerouting
             navLive = true;
+            if (s == STATUS_REROUTING) {
+                reroute();
+            } else if (rerouting) {
+                endReroute();
+            }
             return;
         }
+        rerouting = false;
+        rerouteShown = false;
+        handler.removeCallbacks(rerouteShow);
         handler.removeCallbacks(tick);
         destName = null;
         navLive = false;
@@ -227,6 +245,38 @@ final class AaTurns {
         estPoint = 0;
         roundaboutType = -1;
         release();
+    }
+
+    /**
+     * Android Auto is rerouting (status 3). With standard turns, a reroute still going after
+     * REROUTE_SHOW_MS shows the cluster's "Recalculating..." (type 10, RECALC ROUTE: the
+     * cluster draws it with a spinner, on a US Ioniq 5 and on the Creta Electric), until the
+     * new route's first turn or the end of the reroute. A short one leaves the turn as it is.
+     * Without it the AR HUD broke for about a minute after a missed exit on a US EV6.
+     */
+    void reroute() {
+        if (!standardTurns || rerouting) return;
+        rerouting = true;
+        handler.removeCallbacks(rerouteShow);
+        handler.postDelayed(rerouteShow, REROUTE_SHOW_MS);
+    }
+
+    final Runnable rerouteShow = new Runnable() {
+        @Override
+        public void run() {
+            if (!rerouting || !navLive) return;
+            rerouteShown = true;
+            cluster.tbtInfo(TYPE_RECALCULATING, 65535, 0f, 0f, -3, 0, 15, 0, -1);
+        }
+    };
+
+    /** The reroute is over: the turn goes back up if "Recalculating..." replaced it. */
+    void endReroute() {
+        boolean shown = rerouteShown;
+        rerouting = false;
+        rerouteShown = false;
+        handler.removeCallbacks(rerouteShow);
+        if (shown && road != null) sendTurn();
     }
 
     /** The car's navigation took over (focus native): forget the turn. */
@@ -241,6 +291,9 @@ final class AaTurns {
         displayType = 0;
         direction = 0;
         roundaboutType = -1;
+        rerouting = false;
+        rerouteShown = false;
+        handler.removeCallbacks(rerouteShow);
     }
 
     /** The connection ended: clear what we showed, if a route was on. */
@@ -252,7 +305,7 @@ final class AaTurns {
     // ---- the next turn
 
     void sendTurn() {
-        if (!navLive) return;
+        if (!navLive || rerouteShown) return;   // "Recalculating..." stays until the new route's turn
         int type = displayType, dir = direction, bar = 32, barErr = 0, sides = 65535;
         if (distance < 0f) {
             bar = 254;

@@ -79,6 +79,16 @@ the turn itself.
 - The turns ahead get the same icons as the turn itself: ramps and forks 172-174, exits
   81/82/86, ferries 176, destinations 112-114, straight for the rest.
 
+## Rerouting
+
+Android Auto reports a reroute as status 3. With the car's own format on (`tbt_standard`),
+a reroute still going after 1 second shows the cluster's "Recalculating..." (type 10,
+`RECALC ROUTE`: drawn with a spinner on a US Ioniq 5, sent parked over adb, and on a Creta
+Electric), until the new route's first turn, or the turn it had when Android Auto goes back
+to guiding on the same route. Distances for the old turn don't replace it. A shorter reroute
+leaves the turn as it is. Without it, the AR HUD broke for about a minute after a missed exit
+on a US EV6 while Android Auto's new route settled.
+
 ## Lanes
 
 The car navigation keeps running under a phone's guidance with no route, and sends the
