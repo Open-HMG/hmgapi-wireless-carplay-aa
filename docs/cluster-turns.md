@@ -29,6 +29,7 @@ main display:
 |---|---|---|
 | straight, turn, slight, sharp | `TURN` 13 | 0; slight 45/315; turn 90/270; sharp 135/225 |
 | U-turn | `U_TURN` 31 | 270 (90 for left-hand traffic) |
+| on-ramp (Android Auto's ON_RAMP; the car's navigation has no ramp type, it's a turn point) | `TURN` 13 | 45 / 315 (0 with no side) |
 | fork | `FORK_2` 25 | 90 / 270 |
 | highway exit right / left | `EXIT_RIGHT` 17 / `EXIT_LEFT` 18 (`*_COMBI_1` 19/20 when another maneuver follows) | 90 / 270 |
 | roundabout | `EXIT_ROUNDABOUT_TRS_RIGHT` 32 (33 for left-hand traffic) | the exit's direction |
