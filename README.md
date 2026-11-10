@@ -33,6 +33,8 @@ in-memory patches (no files changed); the files it does change are listed in the
 | Hyundai Ioniq 5 (`NEEV`, `NEEV23`) | USA | 260507 |
 | Kia EV6 (`CVEV`) | Canada | 260206 |
 | Hyundai Ioniq 5 (`NEEV`) | Canada | 260206 |
+| Kia Sportage (`NQ5`), Telluride (`ONPE`), Niro EV (`SG2EV`), Carnival (`KA423`) | USA | 260507 |
+| Hyundai Palisade (`LX2PE`) | USA | 260903 |
 
 The list is `system` in [`wireless-carplay-aa/mod.json`](wireless-carplay-aa/mod.json).
 It needs the head unit's Wi-Fi hardware and a hook map for the car in HMG-API
