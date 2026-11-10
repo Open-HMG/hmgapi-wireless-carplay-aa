@@ -31,6 +31,14 @@
       "apply": "rebuild"
     },
     {
+      "key": "wifi_direct",
+      "type": "toggle",
+      "default": false,
+      "apply": "rebuild",
+      "title": "Wi-Fi Direct (test: Android phones stuck on Connecting)",
+      "description": "Turns on Wi-Fi Direct in the car's Wi-Fi settings (p2p_disabled=0) and lifts its 5 GHz limit (p2p_no_go_freq), as NEMESIS's Enable Wireless Features package does. For phones that find the car's hotspot but never connect (#18); check the car's ADB TCP switch first. Off: the car's own settings, put back exactly."
+    },
+    {
       "key": "menu",
       "type": "toggle",
       "default": true,

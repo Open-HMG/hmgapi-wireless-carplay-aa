@@ -49,6 +49,10 @@
     {
       "id": "audio",
       "when": "settings.audio"
+    },
+    {
+      "id": "wifi_direct",
+      "when": "settings.wifi_direct"
     }
   ],
   "feature_flags": [
