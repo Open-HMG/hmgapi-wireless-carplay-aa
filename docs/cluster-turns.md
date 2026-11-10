@@ -65,6 +65,21 @@ left-hand traffic twin (0xca) draws the loading spinner, so the mod doesn't send
 Roundabouts in the turns ahead get the same icons, with the cluster's direction rather than
 Android Auto's angle.
 
+**Which way round.** Measured on a US Ioniq 5 (issue #19), parked, by sending each code to the
+cluster service over adb:
+
+- In the car's own format, `EXIT_ROUNDABOUT_TRS_RIGHT` (32) draws a counterclockwise roundabout
+  (right-hand traffic) and `EXIT_ROUNDABOUT_TRS_LEFT` (33) a clockwise one. The exit is drawn
+  at the direction sent, in both.
+- The icons 96-107 are counterclockwise, and 192-203 (each + 96) clockwise, with the exit at
+  the same place for the same position in the set (0xc3 is a right exit, like 99).
+- 103 and 106 draw the same as 104 and 107 on this car.
+
+Android Auto's side isn't the way round: it marked a US (counterclockwise) roundabout LEFT, and
+33 drew it clockwise. So the mod picks 32 or 33 from the icon's set (counterclockwise on every
+car it supports), and inside a roundabout it keeps the exit icon whatever side Android Auto
+gives.
+
 ## Never 64
 
 The mod never sends 64 (0x40, "no direction"). The cluster draws its loading spinner for

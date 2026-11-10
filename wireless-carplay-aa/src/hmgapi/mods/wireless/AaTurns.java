@@ -333,8 +333,10 @@ final class AaTurns {
                 if (r || l) return new int[] { r ? TYPE_EXIT_RIGHT : TYPE_EXIT_LEFT, r ? 90 : 270, bar };
                 break;
             case ROUNDABOUT_EXIT: case ROUNDABOUT_ENTER_AND_EXIT:
-                // the exit's direction; 32 for right-hand traffic, 33 left (the car: its drive side)
-                return new int[] { l ? TYPE_ROUNDABOUT_LEFT : TYPE_ROUNDABOUT_RIGHT, iconDir, bar };
+                // the exit's direction. 32 draws a counterclockwise roundabout, 33 a clockwise one
+                // (measured on a US Ioniq 5, issue #19), so the icon's set picks it, not Android
+                // Auto's side: it marked a US (counterclockwise) roundabout LEFT, drawn clockwise
+                return new int[] { clockwiseIcon(icon) ? TYPE_ROUNDABOUT_LEFT : TYPE_ROUNDABOUT_RIGHT, iconDir, bar };
             default:
                 break;
         }
@@ -481,10 +483,9 @@ final class AaTurns {
      */
     void setRoundaboutType(int ev, int side, int a) {
         if (ev == ROUNDABOUT_EXIT) {
-            if (side == RIGHT || side == LEFT) {
-                displayType = side == RIGHT ? TYPE_ROUNDABOUT_RIGHT : TYPE_ROUNDABOUT_LEFT;
-                if (roundaboutType >= 0) direction = roundaboutDir;
-            } else if (roundaboutType >= 0) {
+            // with or without a side: Android Auto's side doesn't say which way the roundabout
+            // goes (issue #19: a US roundabout marked LEFT, drawn clockwise as 33)
+            if (roundaboutType >= 0) {
                 displayType = roundaboutType;
                 direction = roundaboutDir;
             } else {
@@ -499,6 +500,11 @@ final class AaTurns {
         direction = r[1];
         roundaboutType = r[0] == 65 ? -1 : r[0];
         roundaboutDir = r[1];
+    }
+
+    /** The car's clockwise (left-hand traffic) roundabout icons, 192-203: the counterclockwise 96-107 + 96. */
+    static boolean clockwiseIcon(int type) {
+        return type >= 192 && type <= 203;
     }
 
     /**
