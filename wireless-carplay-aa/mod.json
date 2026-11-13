@@ -14,10 +14,24 @@
       "model": [
         "CVEV",
         "NEEV",
-        "NEEV23"
+        "NEEV23",
+        "NQ5",
+        "ONPE",
+        "SG2EV",
+        "KA423"
       ],
       "region": "USA",
       "firmware": "260507",
+      "features": [
+        "hmgapi.wifi"
+      ]
+    },
+    {
+      "model": [
+        "LX2PE"
+      ],
+      "region": "USA",
+      "firmware": "260903",
       "features": [
         "hmgapi.wifi"
       ]
