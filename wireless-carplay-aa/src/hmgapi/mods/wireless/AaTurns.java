@@ -212,8 +212,13 @@ final class AaTurns {
             int[] n = standard(event, turnSide, displayType, direction, GUIDE_WINDOW);
             s += ", near: type " + n[0] + " dir " + n[1];
         }
+        if (s.equals(lastLog)) return;   // Android Auto sends the same maneuver again about every 1.3 s
+        lastLog = s;
         Log.i("HMG-API", s);
     }
+
+    /** the last maneuver line logged */
+    String lastLog;
 
     void nextTurnDistance(int meters, int seconds, int e3, int unitFlags) {
         if ((unitFlags & FLAG_AHEAD) != 0) {

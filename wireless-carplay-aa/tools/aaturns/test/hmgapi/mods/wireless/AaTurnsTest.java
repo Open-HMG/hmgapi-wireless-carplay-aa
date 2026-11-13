@@ -107,6 +107,11 @@ public final class AaTurnsTest {
         expect("roundabout, exit at 100 degrees", "road [Circle]", "tbt 99 65535 90.0 -1.0 0 0 0 254 -2", "hud f201630000" + utf16("Circle"));
         check("maneuver log: event, side, angle, number, what it became",
                 "HMG-API [wireless-carplay-aa] AA turn: event 13 side 2 angle 100 number 0 -> type 99 dir 90".equals(android.util.Log.last));
+        int logged = android.util.Log.count;
+        d.nextTurn("Circle", RIGHT, 13, 100, 0);
+        d.nextTurn("Circle", RIGHT, 13, 100, 0);
+        check("maneuver log: the same maneuver again (Android Auto resends it) isn't logged again", android.util.Log.count == logged);
+        c.calls.clear();
         d.nextTurn("Old Rd", 0, 11, 0, 0);
         expect("roundabout enter: not for the cluster");
         final int UNSPECIFIED = 3;
