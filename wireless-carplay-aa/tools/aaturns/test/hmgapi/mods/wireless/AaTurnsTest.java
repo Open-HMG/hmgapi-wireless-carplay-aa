@@ -209,7 +209,10 @@ public final class AaTurnsTest {
         stdCase("roundabout marked LEFT (a US one, issue #19): 32, counterclockwise, not 33", RB_EXIT, LEFT, 99, 90, 200, "32 90 40");
         stdCase("roundabout marked RIGHT: 32", RB_BOTH, RIGHT, 105, 270, 200, "32 270 40");
         stdCase("a clockwise icon (192-203): 33", RB_BOTH, 0, 195, 90, 200, "33 90 40");
-        stdCase("on-ramp: the icon, with the bar", ON_RAMP, RIGHT, 173, 30, 200, "173 30 40");
+        stdCase("on-ramp right: TURN 45 (the car's turn point; the AR HUD animates it), not the icon", ON_RAMP, RIGHT, 173, 30, 200, "13 45 40");
+        stdCase("on-ramp left: TURN 315", ON_RAMP, LEFT, 174, 330, 200, "13 315 40");
+        stdCase("on-ramp without a side: TURN 0", ON_RAMP, 0, 172, 0, 200, "13 0 40");
+        stdCase("on-ramp far out: the icon, bar off", ON_RAMP, RIGHT, 173, 30, 600, "173 30 0");
         stdCase("ferry: the icon, with the bar", FERRY, 0, 176, 0, 200, "176 0 40");
         stdCase("turn without a side: the icon (straight), with the bar", TURN, 0, 65, 0, 200, "65 0 40");
         stdCase("fork without a side: the icon (172), with the bar", FORK, 0, 172, 0, 200, "172 0 40");

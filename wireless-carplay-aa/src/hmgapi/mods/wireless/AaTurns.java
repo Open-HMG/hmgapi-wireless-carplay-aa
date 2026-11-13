@@ -384,6 +384,10 @@ final class AaTurns {
                 break;
             case U_TURN:
                 return new int[] { TYPE_U_TURN, r ? 90 : 270, bar };
+            case ON_RAMP:
+                // the car's navigation has no ramp type: entering a ramp is one of its turn
+                // points (TURN, at the ramp's angle), which the AR HUD animates; the icon doesn't
+                return new int[] { TYPE_TURN, r ? 45 : l ? 315 : 0, bar };
             case FORK:
                 if (r || l) return new int[] { TYPE_FORK, r ? 90 : 270, bar };
                 break;
@@ -398,7 +402,7 @@ final class AaTurns {
             default:
                 break;
         }
-        return new int[] { icon, iconDir, bar };   // on-ramps, ferries, no side: the icon, with the bar
+        return new int[] { icon, iconDir, bar };   // ferries, no side: the icon, with the bar
     }
 
     /** Distance to the next turn, in the owner's unit (Settings) where the phone's differs. */
