@@ -54,6 +54,8 @@ its check is inverted. 65535 is what the projection icons always carried, and wi
 `TURN` type it draws a road in every direction, so the mod sends 0 with the car's own
 types and 65535 with the icons.
 
+CarPlay's turns follow the same format with the setting on; [ar-hud.md](ar-hud.md#carplay) has its mapping from iAP2 maneuvers.
+
 ## Roundabouts
 
 Android Auto guides a roundabout in two steps: `ROUNDABOUT_ENTER_AND_EXIT` with the exit's

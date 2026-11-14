@@ -235,6 +235,60 @@ public final class CpTurnsTest {
                 CpTurns.laneIcon(0) == 1 && CpTurns.laneIcon(90) == 3 && CpTurns.laneIcon(-45) == 8 && CpTurns.laneIcon(180) == 5
                         && CpTurns.laneIcon(270) == 7);
         indiaTurns();
+        standardTurns();
         System.exit(fail);
+    }
+
+    static boolean is(int[] got, int type, int dir, int bar) {
+        return got[0] == type && got[1] == dir && got[2] == bar;
+    }
+
+    /** setting tbt_standard: the car navigation's own format near a maneuver (docs/ar-hud.md) */
+    static void standardTurns() {
+        c = new Cluster();
+        CpTurns t = new CpTurns(new android.content.Context(), c, null);
+        t.standardTurns = true;
+        t.maneuver(maneuver(0, 2, 0, 0, 0, "Test Road", 900));
+        t.routeGuidance(msg(0, U16, i(1), 1, ENUM, i(1), 10, U32, i(900), 11, STR, s("900"), 12, ENUM, i(2), 13, U16, i(0)));
+        expect("standard turns: a right turn 900 m out is the icon, bar off",
+                "road [Test Road]", "tbt 67 0 0.0 900.0 0 0 0 0 0",
+                "hud f201430000" + utf16("Test Road"), "2c 0 0 900 0 0 0 0 0 0");
+        t.routeGuidance(msg(0, U16, i(1), 10, U32, i(300), 11, STR, s("300")));
+        expect("standard turns: 300 m out it's TURN 90 with the bar at 60; the HUD list keeps the icon",
+                "road [Test Road]", "tbt 13 0 90.0 300.0 0 0 0 60 0", "2c 0 0 300 0 0 0 0 0 0");
+        t.routeGuidance(msg(0, U16, i(1), 10, U32, i(5), 11, STR, s("5")));
+        expect("standard turns: 5 m out the bar is 10 at least",
+                "road [Test Road]", "tbt 13 0 90.0 5.0 0 0 0 10 0", "2c 0 0 5 0 0 0 0 0 0");
+        check("standard turns: off by default", !new CpTurns(new android.content.Context(), new Cluster(), null).standardTurns);
+
+        // type, side, junction, exit, icon, meters -> {type, direction, bar}
+        check("standard: the window is 457 m (bar 90 at its edge), the icon beyond it and with no distance",
+                is(CpTurns.standard(2, 0, 0, 0, 67, 457), 13, 90, 90) && is(CpTurns.standard(2, 0, 0, 0, 67, 458), 67, 0, 0)
+                        && is(CpTurns.standard(2, 0, 0, 0, 67, -1), 67, 0, 0) && is(CpTurns.standard(1, 0, 0, 0, 70, 0), 13, 270, 10));
+        check("standard: straight TURN 0; exit angles in 45 degree steps (-60 315, -120 225, 120 135, 45 45)",
+                is(CpTurns.standard(3, 0, 0, 0, 65, 200), 13, 0, 40) && is(CpTurns.standard(1, 0, 0, -60, 71, 200), 13, 315, 40)
+                        && is(CpTurns.standard(1, 0, 0, -120, 69, 200), 13, 225, 40) && is(CpTurns.standard(2, 0, 0, 120, 68, 200), 13, 135, 40)
+                        && is(CpTurns.standard(2, 0, 0, 45, 144, 200), 13, 45, 40));
+        check("standard: slight and sharp turns by type (49 315, 50 45, 47 225, 48 135)",
+                is(CpTurns.standard(49, 0, 0, -45, 71, 200), 13, 315, 40) && is(CpTurns.standard(50, 0, 0, 45, 66, 200), 13, 45, 40)
+                        && is(CpTurns.standard(47, 0, 0, -140, 69, 200), 13, 225, 40) && is(CpTurns.standard(48, 0, 0, 140, 68, 200), 13, 135, 40));
+        check("standard: U-turn 270 (90 for left-hand traffic), forks, highway exits",
+                is(CpTurns.standard(4, 0, 0, 0, 72, 200), 31, 270, 40) && is(CpTurns.standard(4, 1, 0, 0, 73, 200), 31, 90, 40)
+                        && is(CpTurns.standard(52, 0, 0, 0, 174, 200), 25, 270, 40) && is(CpTurns.standard(53, 0, 0, 0, 173, 200), 25, 90, 40)
+                        && is(CpTurns.standard(22, 0, 0, 0, 82, 200), 18, 270, 40) && is(CpTurns.standard(23, 0, 0, 0, 81, 200), 17, 90, 40));
+        check("standard: roundabout exit icons as 32 (33 left-hand traffic) with the icon's direction",
+                is(CpTurns.standard(29, 0, 1, 90, 99, 200), 32, 90, 40) && is(CpTurns.standard(32, 0, 1, -45, 104, 200), 32, 225, 40)
+                        && is(CpTurns.standard(1, 1, 1, -90, 105, 200), 33, 270, 40) && is(CpTurns.standard(2, 0, 1, 0, 96, 200), 32, 0, 40));
+        check("standard: on-ramps and ferries keep their icon with the bar",
+                is(CpTurns.standard(9, 0, 0, 0, 172, 200), 172, 0, 40) && is(CpTurns.standard(15, 0, 0, 0, 176, 200), 176, 0, 40));
+        check("standard: destinations keep their icon, no bar; ARRIVED within 20 m and in state 2; NO_INFO left alone",
+                is(CpTurns.standard(12, 0, 0, 0, 112, 300), 112, 0, 0) && is(CpTurns.standard(25, 0, 0, 0, 113, 100), 113, 0, 0)
+                        && is(CpTurns.standard(12, 0, 0, 0, 112, 15), 3, 0, 0) && is(CpTurns.standard(12, 0, 0, 0, 3, -1), 3, 0, 0)
+                        && is(CpTurns.standard(11, 0, 0, 0, 1, 200), 1, 0, 0));
+        check("turnDir: an angle pointing the other way keeps the plain turn",
+                CpTurns.turnDir(-90, true) == 90 && CpTurns.turnDir(90, false) == 270 && CpTurns.turnDir(-90, false) == 270);
+        check("roundaboutDir: the clockwise set (+96), and -1 for 103, 106 and turn icons",
+                CpTurns.roundaboutDir(195) == 90 && CpTurns.roundaboutDir(103) == -1 && CpTurns.roundaboutDir(106) == -1
+                        && CpTurns.roundaboutDir(67) == -1);
     }
 }
