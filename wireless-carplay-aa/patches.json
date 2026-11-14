@@ -42,6 +42,24 @@
       "src": "files/libleafiaaac.so",
       "mode": "644",
       "part": "audio"
+    },
+    {
+      "type": "props",
+      "path": "/system/etc/wifi/wpa_supplicant.conf",
+      "stock": "any",
+      "set": {
+        "p2p_disabled": "0"
+      },
+      "part": "wifi_direct"
+    },
+    {
+      "type": "props",
+      "path": "/system/etc/wifi/wpa_supplicant_overlay.conf",
+      "stock": "any",
+      "remove": [
+        "p2p_no_go_freq"
+      ],
+      "part": "wifi_direct"
     }
   ]
 }
