@@ -1,4 +1,4 @@
-# The AR HUD and the speed limit under Android Auto
+# The AR HUD and the speed limit under Android Auto (and CarPlay's turns)
 
 How the Wireless mod gets the AR HUD to animate Android Auto's turns, and what it will
 take to fill the cluster's distance bar without losing the car's speed-limit sign (the
@@ -30,6 +30,36 @@ The AR HUD draws its animated arrow from the cluster's **main turn display**
 
 This is the `tbt_standard` setting ("Android Auto turns in the car's own format", off by
 default), `AaTurns.standard()`.
+
+### CarPlay
+
+The same setting puts CarPlay's turns in the car's own format too (`CpTurns.standard()`).
+
+**The window:** within 457 m of a maneuver, by the phone's distance to it (RouteGuidanceUpdate item 10, meters).
+
+**The mapping:** from the iAP2 maneuver (ManeuverType, driving side, junction, exit angle) and its icon.
+
+| ManeuverType | Sent near the maneuver |
+|---|---|
+| 3 straight | `TURN` 0 |
+| 1 / 2 left / right | `TURN` 270 / 90, or the exit angle's 45 degree step |
+| 49 / 50 slight left / right | `TURN` 315 / 45 |
+| 47 / 48 sharp left / right | `TURN` 225 / 135 |
+| 4 U-turn | `U_TURN` 270 (90 for left-hand traffic) |
+| 52 / 53 change highway left / right | `FORK_2` 270 / 90 |
+| 22 / 23 highway off-ramp left / right | `EXIT_LEFT` / `EXIT_RIGHT` |
+| roundabout exit icons (96-107, 192-203) | `EXIT_ROUNDABOUT_TRS_RIGHT` 32 (33 for left-hand traffic) with the icon's direction |
+| arrival icons 112/113/114 | the icon, no bar; `ARRIVED` within 20 m |
+
+On-ramps and ferries keep their icon, with the bar. CarPlay has no reroute status in its maneuvers, so there is no "Recalculating..." for it.
+
+**Logs:** HMG-API's log gets one line per maneuver: `CarPlay turn: type … side … junction … exit … -> icon …, near: type … dir …`.
+
+**Checked on a car:** a Korean EV6 (CVEV.KOR, 260902) with the AR HUD, November 2026, by hwjang1, with Naver Map and T map on wireless CarPlay.
+- Right, left, slight left and U-turns animated as the car's own navigation's do.
+- The Korean firmware's `Navigation.DisplayType` values are the same.
+- The owner's build also gives icons to the exit-angle-less slight turn (49) these apps send. Here it only goes out when an icon does.
+- Not yet seen on a drive: forks, highway exits, roundabouts and arrival.
 
 ### Planned: the arrow gliding with the exact distance
 

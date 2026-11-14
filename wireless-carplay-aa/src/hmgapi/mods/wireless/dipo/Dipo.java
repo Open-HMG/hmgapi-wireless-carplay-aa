@@ -129,6 +129,8 @@ public final class Dipo {
                 restartRouteGuidance();
             }
         });
+        turns.standardTurns = mod.settingBoolean("tbt_standard", false);
+        if (turns.standardTurns) log("CarPlay: turns in the car's own format near a maneuver (standard turns)");
         rg = new RgListener();
         mod.hook(app.classLoader, "dipo.iap2_proxy.stop_route_guidance", new MethodHook() {
             @Override

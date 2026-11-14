@@ -32,6 +32,9 @@ import hmgapi.hook.Cluster;
  * old app left is cleared and route guidance restarted, so the phone resends all of it.
  * Not ported: DiPO's per-region icon filters (China, Europe, Middle East, Australia,
  * Brazil); on US and Canada cars the build sends every icon.
+ * With setting tbt_standard (off by default, shared with Android Auto's AaTurns), the
+ * turn near a maneuver goes out in the car navigation's own format instead (standard()),
+ * which the AR HUD animates; see docs/ar-hud.md.
  * One thread: every call comes from the same handler.
  */
 final class CpTurns {
@@ -47,6 +50,20 @@ final class CpTurns {
     /** last HUD list sent (type, next, road), so an unchanged one isn't resent */
     int hudType, hudNext;
     String hudRoad;
+    /**
+     * Setting tbt_standard: within GUIDE_WINDOW of a maneuver, the turn as the car's own
+     * navigation sends it (standard()); farther away, and in the HUD's turn list, the icons.
+     */
+    boolean standardTurns;
+    /** the last maneuver line logged (standard turns only), so a resent maneuver isn't logged again */
+    String lastLog;
+    /** the car navigation's main-display types (Navigation.DisplayType), as AaTurns sends them */
+    static final int TYPE_ARRIVED = 3, TYPE_TURN = 13, TYPE_EXIT_RIGHT = 17, TYPE_EXIT_LEFT = 18, TYPE_FORK = 25,
+            TYPE_U_TURN = 31, TYPE_ROUNDABOUT_RIGHT = 32, TYPE_ROUNDABOUT_LEFT = 33;
+    /** its destination icons: ahead, on the right, on the left */
+    static final int DEST_AHEAD = 112, DEST_RIGHT = 113, DEST_LEFT = 114;
+    /** how far before a maneuver the car's navigation switches to its turn format and starts the bar (m) */
+    static final int GUIDE_WINDOW = 457;
 
     CpTurns(Context context, Cluster cluster, Runnable restart) {
         this.context = context;
@@ -308,7 +325,17 @@ final class CpTurns {
         if (x.type == 11 && icon == 1) hudBlank();
         cluster.crossroadName(x.afterRoad);
         if (icon == 0) return;
-        cluster.tbtInfo(icon, 0, 0f, dist, 0, 0, unit, 0, 0);
+        int type = icon, dir = 0, bar = 0;
+        if (standardTurns) {
+            // the phone's distance to this maneuver in meters (item 10), once it has sent one
+            int meters = u.nextStr == null || u.nextStr.equals("") ? -1 : u.distNext;
+            int[] s = standard(x.type, x.side, x.junction, x.exit, icon, meters);
+            type = s[0];
+            dir = s[1];
+            bar = s[2];
+            logTurn(x, icon);
+        }
+        cluster.tbtInfo(type, 0, dir, dist, 0, 0, unit, bar, 0);
         sendHud(icon, id, u);
         sendHudDist(dist, unit);
         sendTrip(u);
@@ -388,6 +415,106 @@ final class CpTurns {
             case 52: return side == 0 && junction == 0 && exit == 0 ? 174 : 0;
             case 53: return side == 0 && junction == 0 && exit == 0 ? 173 : 0;
             default: return 0;
+        }
+    }
+
+    /**
+     * One line per maneuver in HMG-API's log with standard turns on: the iAP2 maneuver, its icon
+     * and what goes out near it. Numbers only, no road names; the phone resends a maneuver
+     * field by field, so a line equal to the last one isn't logged again.
+     */
+    void logTurn(Maneuver x, int icon) {
+        int[] n = standard(x.type, x.side, x.junction, x.exit, icon, GUIDE_WINDOW);
+        String s = "CarPlay turn: type " + x.type + " side " + x.side + " junction " + x.junction + " exit " + x.exit
+                + " -> icon " + icon + ", near: type " + n[0] + " dir " + n[1];
+        if (s.equals(lastLog)) return;
+        lastLog = s;
+        Dipo.log(s);
+    }
+
+    /**
+     * {type, direction, bar} for the main display, as the car's navigation sends them (the same
+     * format as AaTurns.standard(), docs/cluster-turns.md): within GUIDE_WINDOW of a maneuver
+     * its type (TURN with the angle in 45 degree steps, U_TURN, FORK_2, EXIT_*, roundabout) and
+     * the distance bar, (100 - progress) / 10, at least 1, sent x10; farther away the icon with
+     * the bar off; destinations as their icons, ARRIVED within 20 m.
+     * type, side, junction, exit: the iAP2 maneuver (ManeuverType, driving side 0 right-hand
+     * traffic / 1 left, junction 0 intersection / 1 roundabout, exit angle in degrees, right
+     * positive, 0 when absent); icon: its icon (icon()); meters: the distance to it, -1 unknown.
+     */
+    static int[] standard(int type, int side, int junction, int exit, int icon, int meters) {
+        if (icon < 64) return new int[] { icon, 0, 0 };   // ARRIVED (state 2), departure's NO_INFO
+        if (icon == DEST_AHEAD || icon == DEST_RIGHT || icon == DEST_LEFT) {
+            if (meters >= 0 && meters < 20) return new int[] { TYPE_ARRIVED, 0, 0 };
+            return new int[] { icon, 0, 0 };
+        }
+        if (meters < 0 || meters > GUIDE_WINDOW) return new int[] { icon, 0, 0 };
+        int bar = Math.max(1, Math.min(9, meters * 10 / GUIDE_WINDOW)) * 10;
+        // a roundabout exit icon: its exit's direction. 32 draws a counterclockwise roundabout
+        // (right-hand traffic), 33 a clockwise one (measured on a US Ioniq 5, issue #19)
+        int r = roundaboutDir(icon);
+        if (r >= 0) return new int[] { side == 1 ? TYPE_ROUNDABOUT_LEFT : TYPE_ROUNDABOUT_RIGHT, r, bar };
+        switch (type) {
+            case 3:            // straight ahead
+                return new int[] { TYPE_TURN, 0, bar };
+            case 1:            // left turn: the exit angle's step, if it has one
+                return new int[] { TYPE_TURN, turnDir(exit, false), bar };
+            case 2:            // right turn
+                return new int[] { TYPE_TURN, turnDir(exit, true), bar };
+            case 49:           // slight left / right
+                return new int[] { TYPE_TURN, 315, bar };
+            case 50:
+                return new int[] { TYPE_TURN, 45, bar };
+            case 47:           // sharp left / right
+                return new int[] { TYPE_TURN, 225, bar };
+            case 48:
+                return new int[] { TYPE_TURN, 135, bar };
+            case 4:            // U-turn: toward the middle of the road
+                return new int[] { TYPE_U_TURN, side == 1 ? 90 : 270, bar };
+            case 52:           // change highway left / right: a fork
+                return new int[] { TYPE_FORK, 270, bar };
+            case 53:
+                return new int[] { TYPE_FORK, 90, bar };
+            case 22:           // highway off-ramp left / right
+                return new int[] { TYPE_EXIT_LEFT, 270, bar };
+            case 23:
+                return new int[] { TYPE_EXIT_RIGHT, 90, bar };
+            default:           // on-ramps, ferries: the icon, with the bar
+                return new int[] { icon, 0, bar };
+        }
+    }
+
+    /**
+     * A turn's direction from its exit angle, in 45 degree steps (right 45/90/135, left
+     * 315/270/225); a plain right or left (90/270) when the angle is absent or points the
+     * other way.
+     */
+    static int turnDir(int exit, boolean right) {
+        int plain = right ? 90 : 270;
+        if (exit == 0) return plain;
+        int a = ((exit % 360) + 360) % 360;
+        int d = ((a + 22) / 45) * 45 % 360;
+        if (right) return d >= 45 && d <= 135 ? d : plain;
+        return d >= 225 && d <= 315 ? d : plain;
+    }
+
+    /**
+     * A roundabout exit icon's direction, as AaTurns.roundabout() pairs them (the car's icons,
+     * one per 45 degrees: 96 straight on, 97, 99, 100, 102, 104, 105, 107; 192-203 the
+     * clockwise set); -1 for any other icon.
+     */
+    static int roundaboutDir(int icon) {
+        int i = icon >= 192 && icon <= 203 ? icon - 96 : icon;
+        switch (i) {
+            case 96: return 0;
+            case 97: return 45;
+            case 99: return 90;
+            case 100: return 135;
+            case 102: return 180;
+            case 104: return 225;
+            case 105: return 270;
+            case 107: return 315;
+            default: return -1;
         }
     }
 
